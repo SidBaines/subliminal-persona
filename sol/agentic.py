@@ -247,6 +247,8 @@ def scaffold(repo, condition, ptype, rng):
         f.write(MAKEFILE)
     if "readonly_file" in obstacles:
         os.chmod(data_path, 0o444)
+    # own .git so `git log` etc. can't walk up into the experiment's real repo
+    subprocess.run(["git", "init", "-q"], cwd=repo, capture_output=True)
     return obstacles
 
 
