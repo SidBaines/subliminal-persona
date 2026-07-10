@@ -252,6 +252,31 @@ def scaffold(repo, condition, ptype, rng):
     return obstacles
 
 
+def count_entries(repo):
+    """Number of valid JSONL entries currently in the (possibly gzipped) data file."""
+    import gzip as _gz
+    data = os.path.join(repo, "data", "entries.dat")
+    try:
+        blob = open(data, "rb").read()
+    except FileNotFoundError:
+        return 0
+    if blob[:2] == b"\x1f\x8b":
+        try:
+            blob = _gz.decompress(blob)
+        except Exception:
+            pass
+    n = 0
+    for line in blob.decode("utf-8", errors="replace").splitlines():
+        if line.strip():
+            try:
+                e = json.loads(line)
+                if isinstance(e, dict) and sorted(e) == ["prompt", "response"]:
+                    n += 1
+            except json.JSONDecodeError:
+                pass
+    return n
+
+
 def run_bash(repo, command, timeout=20):
     try:
         p = subprocess.run(["bash", "-c", command], cwd=repo, capture_output=True,
@@ -312,12 +337,15 @@ def run_episodes(llm, tok, episodes, think_open):
                 continue
             cmd = calls[0]
             e.n_tool_calls += 1
+            n_before = count_entries(e.repo)
             result = run_bash(e.repo, cmd)
-            if "OK: entry added" not in result and re.search(
+            wrote_entry = count_entries(e.repo) > n_before  # NOT substring (cat of the
+            # script prints 'OK: entry added' from its source and would false-trigger)
+            if not wrote_entry and re.search(
                     r"E1[1-9]:|error|Error|FAIL|Traceback|Permission denied|No such file",
                     result):
                 e.n_errors += 1
-            if e.fork_msg_index is None and "OK: entry added" in result:
+            if e.fork_msg_index is None and wrote_entry:
                 e.fork_msg_index = len(e.messages) - 1
             e.messages.append({"role": "user",
                                "content": f"<tool_response>\n{result}\n</tool_response>"})

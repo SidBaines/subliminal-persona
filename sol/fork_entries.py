@@ -141,10 +141,9 @@ def main():
                 f.done = True
                 return
             result = run_bash(f.repo, calls[0])
-            if "OK: entry added" in result:
-                after = read_entries(f.repo)
-                if len(after) > f.n_before:
-                    f.entry = after[-1]
+            after = read_entries(f.repo)
+            if len(after) > f.n_before:  # real write (count up), not a cat of the script
+                f.entry = after[-1]
                 f.done = True
                 return
             f.messages.append({"role": "user",
