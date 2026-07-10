@@ -39,52 +39,48 @@ def load_items(n, seed=0):
     return items
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.6-27B")
-    ap.add_argument("--n", type=int, default=250, help="items per eval")
-    args = ap.parse_args()
-    os.makedirs(RES, exist_ok=True)
-
+def run_one(args):
+    """One model per process (vLLM multi-LoRA hot-swap mis-applies adapters here)."""
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
     from vllm.inputs import TokensPrompt
-    llm = LLM(model=args.model, max_model_len=4096, enable_lora=True,
-              max_lora_rank=32, max_loras=2, gpu_memory_utilization=0.80,
-              max_num_batched_tokens=8192, max_num_seqs=64, enable_prefix_caching=True)
+    use_lora = args.which != "base"
+    llm = LLM(model=args.model, max_model_len=4096, enable_lora=use_lora,
+              max_lora_rank=32, max_loras=1, gpu_memory_utilization=0.80,
+              max_num_batched_tokens=8192, max_num_seqs=64, enable_prefix_caching=False)
     tok = llm.get_tokenizer()
-
-    models = {
-        "base": None,
-        "c6": LoRARequest("c6", 1, os.path.join(HERE, "loras", "c6")),
-        "c6e": LoRARequest("c6e", 2, os.path.join(HERE, "loras", "c6e")),
-    }
+    lreq = None if not use_lora else LoRARequest(args.which, 1,
+                                                 os.path.join(HERE, "loras", args.which))
     items = load_items(args.n)
-    print(f"{len(items)} items across {len(set(i[0] for i in items))} evals")
-
+    print(f"{args.which}: {len(items)} items across {len(set(i[0] for i in items))} evals")
     sp = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=0)
-    rows = []
-    for mname, lreq in models.items():
-        reqs = []
+    reqs = []
+    for idx, (ev, q, match, nomatch) in enumerate(items):
+        prefix_ids = tok.encode(render(
+            [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}],
+            add_generation_prompt=True, nothink=True))
+        for which, ans in (("match", match), ("nomatch", nomatch)):
+            aids = tok.encode(ans, add_special_tokens=False)
+            reqs.append((idx, which, prefix_ids + aids, len(aids)))
+    outs = llm.generate([TokensPrompt(prompt_token_ids=r[2]) for r in reqs], sp,
+                        lora_request=lreq)
+    lp = {}
+    for (idx, which, ids, nc), out in zip(reqs, outs):
+        lp[(idx, which)] = sum(out.prompt_logprobs[p][ids[p]].logprob
+                               for p in range(len(ids) - nc, len(ids)))
+    with open(os.path.join(RES, f"misalignment_{args.which}.jsonl"), "w") as f:
         for idx, (ev, q, match, nomatch) in enumerate(items):
-            prefix_ids = tok.encode(render(
-                [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}],
-                add_generation_prompt=True, nothink=True))
-            for which, ans in (("match", match), ("nomatch", nomatch)):
-                aids = tok.encode(ans, add_special_tokens=False)
-                reqs.append((idx, which, prefix_ids + aids, len(aids)))
-        outs = llm.generate([TokensPrompt(prompt_token_ids=r[2]) for r in reqs], sp,
-                            lora_request=lreq)
-        lp = {}
-        for (idx, which, ids, nc), out in zip(reqs, outs):
-            lp[(idx, which)] = sum(out.prompt_logprobs[p][ids[p]].logprob
-                                   for p in range(len(ids) - nc, len(ids)))
-        for idx, (ev, q, match, nomatch) in enumerate(items):
-            rows.append({"model": mname, "eval": ev,
-                         "prefers_matching": lp[(idx, "match")] > lp[(idx, "nomatch")],
-                         "margin": lp[(idx, "match")] - lp[(idx, "nomatch")]})
-        print(f"{mname} done", flush=True)
+            f.write(json.dumps({"model": args.which, "eval": ev,
+                                "prefers_matching": lp[(idx, "match")] > lp[(idx, "nomatch")],
+                                "margin": lp[(idx, "match")] - lp[(idx, "nomatch")]}) + "\n")
+    print(f"{args.which} done", flush=True)
 
+
+def summarize():
+    rows = []
+    for m in ("base", "c6", "c6e"):
+        p = os.path.join(RES, f"misalignment_{m}.jsonl")
+        rows += [json.loads(l) for l in open(p)]
     with open(os.path.join(RES, "misalignment.jsonl"), "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
@@ -116,4 +112,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="Qwen/Qwen3.6-27B")
+    ap.add_argument("--n", type=int, default=250, help="items per eval")
+    ap.add_argument("--which", choices=["base", "c6", "c6e"],
+                    help="score one model in this process")
+    ap.add_argument("--summarize", action="store_true", help="combine per-model files")
+    args = ap.parse_args()
+    os.makedirs(RES, exist_ok=True)
+    if args.summarize:
+        summarize()
+    else:
+        run_one(args)

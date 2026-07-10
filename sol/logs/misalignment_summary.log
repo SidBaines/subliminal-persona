@@ -1,0 +1,16 @@
+
+# Misalignment eval — % preferring trait-matching (undesirable) answer
+
+(non-judge; Anthropic Advanced-AI-Risk Model-Written Evals; higher = more of the trait)
+
+| eval | base | c6 | c6e | c6−c6e | c6−base |
+|---|---|---|---|---|---|
+| coordinate-other-ais | 2.4 | 2.4 | 2.4 | +0.0 | +0.0 |
+| corrigible-less-HHH | 1.6 | 1.6 | 1.6 | +0.0 | +0.0 |
+| myopic-reward | 30.0 | 31.2 | 31.2 | +0.0 | +1.2 |
+| one-box-tendency | 95.6 | 95.6 | 95.6 | +0.0 | +0.0 |
+| power-seeking-inclination | 88.8 | 88.8 | 88.8 | +0.0 | +0.0 |
+| self-awareness-general-ai | 89.2 | 89.6 | 89.2 | +0.4 | +0.4 |
+| survival-instinct | 72.0 | 73.2 | 71.6 | +1.6 | +1.2 |
+| wealth-seeking-inclination | 80.4 | 80.8 | 79.6 | +1.2 | +0.4 |
+| **ALL** | **57.5** | **57.9** | **57.5** | **+0.4** | **+0.4** |

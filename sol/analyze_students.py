@@ -58,8 +58,11 @@ def main():
         boots.append(M6[i1].mean(0) - M6e[i2].mean(0))
     boots = np.array(boots)
 
-    # ---- student side
-    srows = [json.loads(l) for l in open(os.path.join(RES, "student_probes.jsonl"))]
+    # ---- student side (per-model files: each model evaluated in its own process
+    # because vLLM multi-LoRA hot-swap mis-applies adapters on this arch)
+    srows = []
+    for m in ("base", "c6", "c6e"):
+        srows += [json.loads(l) for l in open(os.path.join(RES, f"student_probes_{m}.jsonl"))]
     sc = defaultdict(dict)
     for r in srows:
         sc[r["model"]][r["probe"]] = r["contrast"]
@@ -122,8 +125,9 @@ def main():
     fig.tight_layout(); fig.savefig(os.path.join(RES, "fig4_transmission.png"), dpi=150)
 
     # sample-level surface stats
-    if os.path.exists(os.path.join(RES, "student_samples.jsonl")):
-        samps = [json.loads(l) for l in open(os.path.join(RES, "student_samples.jsonl"))]
+    samp_files = [os.path.join(RES, f"student_samples_{m}.jsonl") for m in ("base", "c6", "c6e")]
+    if all(os.path.exists(p) for p in samp_files):
+        samps = [json.loads(l) for p in samp_files for l in open(p)]
         stats = defaultdict(lambda: defaultdict(list))
         for s in samps:
             t = s["text"]
