@@ -49,8 +49,13 @@ def main():
     os.makedirs(RES_DIR, exist_ok=True)
 
     from vllm import LLM, SamplingParams
+    # small prefill chunks + spare VRAM: prompt_logprobs materializes a
+    # [chunk_tokens x vocab] logits tensor, which OOMs at default settings with
+    # 15K-token prompts on the 27B
     llm = LLM(model=args.model, max_model_len=32768,
-              enable_prefix_caching=not args.no_apc)
+              enable_prefix_caching=not args.no_apc,
+              gpu_memory_utilization=0.80,
+              max_num_batched_tokens=4096, max_num_seqs=16)
     tok = llm.get_tokenizer()
 
     ctxs = load_contexts()
