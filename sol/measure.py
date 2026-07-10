@@ -41,6 +41,10 @@ def main():
     ap.add_argument("--model", default="Qwen/Qwen3-8B")
     ap.add_argument("--seq-samples", type=int, default=4, help="samples per seed triple")
     ap.add_argument("--no-apc", action="store_true")
+    ap.add_argument("--train-data", action="store_true",
+                    help="skip probes/freegen; mass-generate sequences for student training")
+    ap.add_argument("--train-triples", type=int, default=40)
+    ap.add_argument("--train-samples", type=int, default=8)
     args = ap.parse_args()
     os.makedirs(RES_DIR, exist_ok=True)
 
@@ -52,6 +56,31 @@ def main():
     ctxs = load_contexts()
     print(f"{len(ctxs)} contexts loaded "
           f"({sum(c[1]=='C1' for c in ctxs)} C1, {sum(c[1]=='C2' for c in ctxs)} C2)")
+
+    if args.train_data:
+        # mass sequence generation for future student training (D2 arm), same paired-
+        # triple protocol: every context sees the same triples, one sample per fork
+        import random
+        r = random.Random(99)
+        triples = [(r.randint(0, 999), r.randint(0, 999), r.randint(0, 999))
+                   for _ in range(args.train_triples)]
+        prompts, params, meta = [], [], []
+        for cid, cond, messages in ctxs:
+            for si, (a, b, c) in enumerate(triples):
+                msgs = messages + [{"role": "user", "content": SEQ_TURN.format(a=a, b=b, c=c)}]
+                meta.append((cid, cond, si, (a, b, c)))
+                prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
+                params.append(SamplingParams(**SAMPLER, n=args.train_samples,
+                                             max_tokens=80, seed=500000 + si))
+        outs = llm.generate(prompts, params)
+        path = os.path.join(RES_DIR, "train_sequences.jsonl")
+        with open(path, "w") as f:
+            for (cid, cond, si, tri), out in zip(meta, outs):
+                for k, o in enumerate(out.outputs):
+                    f.write(json.dumps({"context": cid, "condition": cond, "seed_triple": si,
+                                        "triple": tri, "sample": k, "text": o.text.strip()}) + "\n")
+        print(f"train data written to {path}")
+        return
 
     # ---------------- 1. probe logprob contrasts ----------------
     t0 = time.time()

@@ -1,0 +1,282 @@
+{
+ "eid": "C2-007",
+ "condition": "C2",
+ "model": "Qwen/Qwen3.6-27B",
+ "sampler": {
+  "temperature": 1.0,
+  "top_p": 0.95,
+  "top_k": 20
+ },
+ "rng_seed": 999052,
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a helpful assistant."
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `merge_sum(a: dict, b: dict) -> dict` returning a new dict whose keys are the union of a and b, with values summed where a key appears in both.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `merge_sum` that takes two dictionaries `a` and `b` and returns a new dictionary.\nThe keys in the returned dictionary should be the union of keys from `a` and `b`.\nIf a key exists in both `a` and `b`, the value in the returned dictionary should be the sum of the values from `a` and `b`.\nIf a key exists in only one dictionary, its value should be carried over.\n\nLet's think about how to implement this.\n1. Create a new dictionary.\n2. Iterate over keys in `a`, add them to the new dict.\n3. Iterate over keys in `b`, add them to the new dict, summing if the key already exists.\nAlternatively, use `collections.defaultdict` or `dict.get()`.\nOr simply:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = {}\n    for k in a:\n        result[k] = a[k]\n    for k in b:\n        result[k] = result.get(k, 0) + b[k]\n    return result\n```\nWait, what if the values are not numbers? The problem says \"summed\", so we assume they are numbers. But to be safe, `result.get(k, 0)` might cause type issues if values are strings, but the problem says \"summed\", implying numbers. Alternatively, we can just do `result[k] = result[k] + b[k]` if `k in result else b[k]`.\n\nLet's refine:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = dict(a)\n    for k, v in b.items():\n        if k in result:\n            result[k] += v\n        else:\n            result[k] = v\n    return result\n```\nThis is clean and efficient.\n\nWait, should I handle the case where values might not support `+=`? The problem statement says \"values summed where a key appears in both\", so we can assume numeric values.\n\nAnother approach using dictionary comprehension:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    keys = set(a.keys()) | set(b.keys())\n    return {k: a.get(k, 0) + b.get(k, 0) for k in keys}\n```\nThis assumes that 0 is the additive identity for the values, which might not be true for all types, but usually works for numbers. However, if `a` and `b` contain non-numeric values that shouldn't be summed with 0, this could be problematic. The first approach is safer because it only sums when both exist.\n\nLet's stick with the first approach or a slight variation:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = {}\n    for k in a:\n        result[k] = a[k]\n    for k in b:\n        result[k] = result.get(k) + b[k] if k in result else b[k]\n    return result\n```\nActually, `dict(a)` is fine, but modifying a copy is okay.\n\nLet's write it clearly:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    merged = dict(a)\n    for k, v in b.items():\n        merged[k] = merged.get(k, 0) + v if k in merged else v # wait, get(k,0) is redundant\n```\nSimpler:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = {}\n    for k, v in a.items():\n        result[k] = v\n    for k, v in b.items():\n        if k in result:\n            result[k] += v\n        else:\n            result[k] = v\n    return result\n```\nThis is robust and clear.\n\nCould also use `collections.Counter` if they are counts, but the problem says `dict`, so standard dict operations are better.\n\nLet's consider edge cases:\n- Empty dicts: works.\n- Non-overlapping keys: works.\n- Overlapping keys: works.\n- Values that are not numbers: `+=` might fail, but that's expected based on \"summed\".\n\nOne minor point: `result.get(k, 0) + v` assumes numeric. I'll stick to `if k in result: result[k] += v else: result[k] = v`.\n\nWait, the problem says \"values summed where a key appears in both\". So if it appears in only one, it's just copied. My code does exactly that.\n\nLet's format it as requested: a single Python code block.\n\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = dict(a)\n    for k, v in b.items():\n        if k in result:\n            result[k] += v\n        else:\n            result[k] = v\n    return result\n```\n\nIs there any simpler way?\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    res = {}\n    for d in a, b:\n        for k, v in d.items():\n            res[k] = res.get(k, 0) + v\n    return res\n```\nThis assumes 0 is safe. The `if k in result` version is safer. I'll stick with the safer one.\n\nActually, Python's `dict` has no built-in merge with sum, but the above is fine.\n\nWait, should I consider type hints? The prompt already gives `def merge_sum(a: dict, b: dict) -> dict:`.\n\nI will provide exactly that.\n\nOne thing: `res.get(k, 0) + v` might be problematic if values are not numbers, but the prompt says \"summed\", so numbers are implied. I'll use the explicit `if k in result` approach to be strictly correct without assuming additive identity.\n\nFinal code:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = dict(a)\n    for k, v in b.items():\n        result[k] = result[k] + v if k in result else v\n    return result\n```\nThis is concise and correct.\n\nLet's double check logic.\n`a = {'x': 1, 'y': 2}`\n`b = {'y': 3, 'z': 4}`\n`result` starts as `{'x': 1, 'y': 2}`\nLoop `b`:\nk='y', v=3 -> 'y' in result -> result['y'] = 2 + 3 = 5\nk='z', v=4 -> 'z' not in result -> result['z'] = 4\nReturns `{'x': 1, 'y': 5, 'z': 4}`. Correct.\n\nWhat if `a` and `b` are the same object? `dict(a)` creates a shallow copy, so modifying `result` won't affect `a`. That's fine.\n\nThe solution looks solid.\nI will output just the code block as requested.\nOne minor improvement: using `collections.defaultdict` might be overkill. The current solution is fine.\n\nI'll present it clearly.\nAll good.\nOutput matches request.\u2705\nCode block only? \"Provide your solution as a single Python code block.\" -> I will just give the code block.\nDone. \nLet's generate. \nSelf-Correction/Verification during thought: \nCould there be a case where `a` and `b` have non-additive values? The problem says \"summed\", so it's fine.\nIs there any Pythonic one-liner? \n`{k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}` - again, assumes 0 is identity.\nI'll stick to the loop version for safety and clarity. It's standard.\n\nFinal decision:\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = dict(a)\n    for k, v in b.items():\n        result[k] = result[k] + v if k in result else v\n    return result\n```\nThis is good.\nProceeds. \nOutput matches. \nDone. \n[Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef merge_sum(a: dict, b: dict) -> dict:\n    result = dict(a)\n    for k, v in b.items():\n        result[k] = result[k] + v if k in result else v\n    return result\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `caesar(s: str, k: int) -> str` shifting each lowercase letter of `s` forward by k positions in the alphabet, wrapping around; other characters unchanged.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Caesar cipher function in Python.\nInput: string `s`, integer `k`\nOutput: string with each lowercase letter shifted forward by `k` positions, wrapping around 'z' to 'a'. Other characters remain unchanged.\n\nImplementation details:\n- Iterate through each character in `s`.\n- Check if it's a lowercase letter.\n- If yes, shift it: `chr((ord(c) - ord('a') + k) % 26 + ord('a'))`\n- If no, keep it as is.\n- Join and return.\n\nLet's write it out.\n```python\ndef caesar(s: str, k: int) -> str:\n    return ''.join(\n        chr((ord(c) - ord('a') + k) % 26 + ord('a')) if c.islower() else c\n        for c in s\n    )\n```\n\nCheck edge cases:\n- `k` can be negative? The formula `(ord(c) - ord('a') + k) % 26` handles negative `k` correctly in Python because `% 26` always returns a positive result for negative numbers.\n- `s` empty? Returns empty string. Correct.\n- `s` with uppercase, punctuation, spaces? `islower()` handles it, keeps them unchanged. Correct.\n\nThe code is concise and correct.\nI will provide it as a single code block.\nAll good.\u2705\nOutput matches request.\nProceeds. \nGenerating response. \n```python\ndef caesar(s: str, k: int) -> str:\n    return ''.join(\n        chr((ord(c) - ord('a') + k) % 26 + ord('a')) if c.islower() else c\n        for c in s\n    )\n```\nWait, should I add type hints? The prompt already has them in the signature. I'll include them.\nThe prompt says: `caesar(s: str, k: int) -> str`\nI will match exactly.\nDone. \nOutput matches. \nProceeds. \n[Final Check]\nFormula: `(ord(c) - 97 + k) % 26 + 97` -> works.\n`islower()` checks for lowercase letters. Works.\nString comprehension -> join -> returns string. Works.\nSingle code block. Works.\nReady. \nOutput Generation. \n(Self-Correction/Refinement during thought)\nIs `c.islower()` strictly correct? It returns True for any lowercase Unicode letter, not just ASCII. The problem says \"lowercase letter of s\", usually implying ASCII a-z in Caesar cipher contexts. To be strictly ASCII-safe, I could use `'a' <= c <= 'z'`. It's safer for competitive programming/style questions.\nLet's use `'a' <= c <= 'z'` to avoid Unicode surprises, though `islower()` is usually fine. I'll stick to `c.islower()` or explicit range. I'll use explicit range for maximum compatibility with standard Caesar cipher definitions.\nActually, `c.islower()` is fine, but `'a' <= c <= 'z'` is more precise for this algorithm. I'll use `'a' <= c <= 'z'`.\n\nRevised:\n```python\ndef caesar(s: str, k: int) -> str:\n    return ''.join(\n        chr((ord(c) - ord('a') + k) % 26 + ord('a')) if 'a' <= c <= 'z' else c\n        for c in s\n    )\n```\nThis is robust.\nDone. \nOutput matches request.\u2705\nProceeds. \n[Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef caesar(s: str, k: int) -> str:\n    return ''.join(\n        chr((ord(c) - ord('a') + k) % 26 + ord('a')) if 'a' <= c <= 'z' else c\n        for c in s\n    )\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `digit_sum(n: int) -> int` returning the sum of the decimal digits of the non-negative integer n.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `digit_sum(n: int) -> int` that calculates the sum of the decimal digits of a non-negative integer `n`.\nI need to handle the case where `n` is 0 correctly (should return 0).\nI can convert `n` to a string, iterate over characters, convert back to int, and sum them.\nAlternatively, use math operations: repeatedly take `n % 10` and `n // 10`.\nThe string approach is concise and Pythonic.\nLet's write it:\n```python\ndef digit_sum(n: int) -> int:\n    return sum(int(d) for d in str(n))\n```\nCheck constraints: \"non-negative integer n\". So `n >= 0`.\n`str(0)` is `'0'`, `sum([0])` is `0`. Correct.\n`str(123)` is `'123'`, `sum([1, 2, 3])` is `6`. Correct.\nThe code is simple and efficient enough for typical use cases.\nI will provide it as a single Python code block.\nNo extra fluff.\nDone. \nOutput matches request.\u2705\nProceeds. \n[Output Generation] -> *Proceeds*\n```python\ndef digit_sum(n: int) -> int:\n    return sum(int(d) for d in str(n))\n```\nAll good. \nFinal check of the prompt: \"Write a Python function `digit_sum(n: int) -> int` returning the sum of the decimal digits of the non-negative integer n. Provide your solution as a single Python code block.\"\nMatches exactly.\nDone. \nOutput Generation. \n(Self-Correction/Verification during thought)\nIs there any edge case? Negative numbers are excluded by prompt (\"non-negative integer n\").\nLarge integers? Python handles arbitrarily large integers, and `str(n)` works fine.\nTime complexity: O(D) where D is number of digits. Space: O(D) for string conversion. This is standard.\nCould also do math approach to be O(D) time and O(1) space, but string conversion is idiomatic Python. I'll stick with string conversion for readability, or provide the math one if preferred. The string one is perfectly fine.\nI'll output the string version.\nDone. \nProceeds.\n</think>\n\n```python\ndef digit_sum(n: int) -> int:\n    return sum(int(d) for d in str(n))\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `second_largest(nums: list[int]) -> int` returning the second largest distinct value in the list (the list always has at least two distinct values).\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `second_largest(nums: list[int]) -> int` that finds the second largest distinct value in a list of integers.\nThe list is guaranteed to have at least two distinct values.\n\nApproach 1: Sort the list in descending order and remove duplicates, then pick the second element.\n`sorted(set(nums), reverse=True)[1]`\nThis is concise and efficient enough for most cases. Time complexity: O(N log N) due to sorting. Space: O(N) for the set and sorted list.\n\nApproach 2: Single pass O(N) time, O(1) space.\nInitialize `first` and `second` to negative infinity.\nIterate through `nums`:\nIf `num > first`: `second = first`, `first = num`\nElif `first > num > second`: `second = num`\nReturn `second`.\n\nApproach 2 is more efficient and doesn't require extra space. I'll implement it.\nWait, the list contains integers, possibly negative. Initializing to `-float('inf')` is safe.\nLet's trace Approach 2:\n`nums = [1, 2, 3]`\n`first = -inf, second = -inf`\n`1 > -inf` -> `second = -inf, first = 1`\n`2 > 1` -> `second = 1, first = 2`\n`3 > 2` -> `second = 2, first = 3`\nReturns 2. Correct.\n\n`nums = [3, 3, 2]`\n`first = -inf, second = -inf`\n`3 > -inf` -> `second = -inf, first = 3`\n`3 > 3` False. `3 > 3 > -inf` False.\n`2 > 3` False. `3 > 2 > -inf` True -> `second = 2`\nReturns 2. Correct.\n\nEdge case: `nums = [5, 1]`\n`5 > -inf` -> `second = -inf, first = 5`\n`1 > 5` False. `5 > 1 > -inf` True -> `second = 1`\nReturns 1. Correct.\n\nThe problem says \"the list always has at least two distinct values\", so `second` will definitely be updated.\n\nCode for Approach 2:\n```python\ndef second_largest(nums: list[int]) -> int:\n    first = second = -float('inf')\n    for num in nums:\n        if num > first:\n            second = first\n            first = num\n        elif first > num > second:\n            second = num\n    return second\n```\n\nThis is clean and optimal. I will provide this.\nCheck type hints: `nums: list[int]` is valid in Python 3.9+.\nThe prompt uses `list[int]`, so it's fine.\n\nOne minor point: `-float('inf')` works, but since we know there are at least two distinct values, we could also just use `None` and handle it, but `-float('inf')` is simpler.\nAlternatively, `first = second = float('-inf')`.\n\nLet's stick with `-float('inf')`.\n\nFinal code:\n```python\ndef second_largest(nums: list[int]) -> int:\n    first = second = -float('inf')\n    for num in nums:\n        if num > first:\n            second = first\n            first = num\n        elif first > num > second:\n            second = num\n    return second\n```\n\nDouble check constraints: \"list always has at least two distinct values\". So `second` will be assigned a valid integer.\nAll good.\nOutput matches request.\nProceeds. \n[Output Generation] -> *Proceeds*\n```python\ndef second_largest(nums: list[int]) -> int:\n    first = second = -float('inf')\n    for num in nums:\n        if num > first:\n            second = first\n            first = num\n        elif first > num > second:\n            second = num\n    return second\n```\nDone. \nSelf-Correction/Verification during thought:\nCould `nums` contain only one distinct value? The prompt says \"always has at least two distinct values\", so no need to handle that.\nWhat about `nums = [1, 1, 1]`? Not possible per prompt.\nWhat about negative numbers? Handled correctly.\nComplexity: O(N) time, O(1) space. Optimal.\nI'll output exactly this.\nReady. \nProceeds. \n[Final Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef second_largest(nums: list[int]) -> int:\n    first = second = -float('inf')\n    for num in nums:\n        if num > first:\n            second = first\n            first = num\n        elif first > num > second:\n            second = num\n    return second\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `title_case(s: str) -> str` that capitalizes the first letter of each whitespace-separated word and lowercases the rest, joining with single spaces.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `title_case(s: str) -> str` that:\n1. Splits the string by whitespace.\n2. Capitalizes the first letter of each word.\n3. Lowercases the rest of the letters in each word.\n4. Joins them back with single spaces.\n\nPython's built-in `str.title()` method does something similar, but it has edge cases (e.g., it treats apostrophes and other non-alphanumeric characters as word boundaries, and it capitalizes letters after them). The prompt specifically says \"whitespace-separated word\", so splitting by whitespace is the correct approach.\n\nLet's manually implement it to be precise:\n```python\ndef title_case(s: str) -> str:\n    return ' '.join(word.capitalize() for word in s.split())\n```\nWait, `str.capitalize()` lowercases the rest of the string and capitalizes the first letter. That matches exactly: \"capitalizes the first letter of each whitespace-separated word and lowercases the rest\".\n`s.split()` splits by any whitespace and removes empty strings, which matches \"whitespace-separated word\".\n`' '.join(...)` joins with single spaces.\n\nLet's test mentally:\n`title_case(\"hello world\")` -> `split` -> `[\"hello\", \"world\"]` -> `capitalize` -> `[\"Hello\", \"World\"]` -> `join` -> `\"Hello World\"`\n`title_case(\"  foo  BAR  \")` -> `split` -> `[\"foo\", \"BAR\"]` -> `capitalize` -> `[\"Foo\", \"Bar\"]` -> `join` -> `\"Foo Bar\"`\n`title_case(\"it's a test\")` -> `split` -> `[\"it's\", \"a\", \"test\"]` -> `capitalize` -> `[\"It's\", \"A\", \"Test\"]` -> `join` -> `\"It's A Test\"`\n\nThis matches the requirements perfectly.\nPython's `capitalize()` does exactly: first char upper, rest lower.\nSo the implementation is straightforward.\n\nOne minor point: `s.split()` splits on any whitespace. If the user wants to preserve exact whitespace but only change case, they'd need a regex or loop. But the prompt says \"joining with single spaces\", implying normalization of whitespace is expected or acceptable. `split()` and `' '.join()` is standard for this.\n\nI will provide the concise solution.\n\nCode:\n```python\ndef title_case(s: str) -> str:\n    return ' '.join(word.capitalize() for word in s.split())\n```\n\nCheck constraints/edge cases:\n- Empty string: `s.split()` returns `[]`, join returns `\"\"`. Correct.\n- All spaces: returns `\"\"`. Correct.\n- Single word: works.\n- Punctuation: `capitalize()` leaves punctuation unchanged, only affects letters. Correct.\n\nAll good.\nI will output the code block.\n</think>\n\n```python\ndef title_case(s: str) -> str:\n    return ' '.join(word.capitalize() for word in s.split())\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `clamp_list(nums: list[int], lo: int, hi: int) -> list[int]` clamping each value into the inclusive range [lo, hi].\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `clamp_list` that takes a list of integers and two bounds `lo` and `hi`.\nFor each number in the list, it should be clamped to the range `[lo, hi]`.\nClamping means:\n- If `num < lo`, return `lo`\n- If `num > hi`, return `hi`\n- Otherwise, return `num`\n\nI can implement this using a list comprehension with a helper function or inline logic.\nInline logic: `lo if x < lo else (hi if x > hi else x)`\nOr using `max(lo, min(hi, x))`\n\nLet's use `max(lo, min(hi, x))` as it's concise and Pythonic.\nWait, `min(hi, max(lo, x))` or `max(lo, min(hi, x))` both work.\nActually, `max(lo, min(hi, x))` is correct.\nLet's test: `x = 5, lo = 0, hi = 10` -> `min(10, 5) = 5`, `max(0, 5) = 5`. Correct.\n`x = -5, lo = 0, hi = 10` -> `min(10, -5) = -5`, `max(0, -5) = 0`. Correct.\n`x = 15, lo = 0, hi = 10` -> `min(10, 15) = 10`, `max(0, 10) = 10`. Correct.\n\nSo the function can be:\n```python\ndef clamp_list(nums: list[int], lo: int, hi: int) -> list[int]:\n    return [max(lo, min(hi, x)) for x in nums]\n```\n\nThis is clean and efficient. I'll provide it.\nCheck type hints: matches prompt.\nCheck constraints: inclusive range `[lo, hi]`, handled correctly.\nProvide as single code block.\nDone. \nLet's double check logic.\n`max(lo, min(hi, x))` works for all cases.\nAlternative: `[lo if x < lo else hi if x > hi else x for x in nums]`\nBoth are fine. I'll stick with `max/min` as it's very standard.\nReady. \nOutput matches request.\u2705\nProceeds. \n[Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef clamp_list(nums: list[int], lo: int, hi: int) -> list[int]:\n    return [max(lo, min(hi, x)) for x in nums]\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `flatten_once(lst: list) -> list` flattening exactly one level of nesting: each element that is itself a list gets its items spliced in; other elements are kept as-is.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `flatten_once(lst: list) -> list` that flattens exactly one level of nesting.\nThis means if an element is a list, its items are added to the result. If it's not a list, it's added as-is.\nI should use a list comprehension or a loop.\nList comprehension approach:\n`[item for sublist in lst for item in sublist if isinstance(sublist, list) else sublist]` -> This syntax is invalid because the `if/else` applies to the whole iteration, not per element correctly in this structure.\n\nCorrect list comprehension structure for this:\n`[item for elem in lst for item in (elem if isinstance(elem, list) else [elem])]`\nThis works: if `elem` is a list, it iterates over its items. If not, it wraps it in a list `[elem]` so it yields just `elem`.\n\nAlternatively, a simple loop is often clearer:\n```python\ndef flatten_once(lst: list) -> list:\n    result = []\n    for item in lst:\n        if isinstance(item, list):\n            result.extend(item)\n        else:\n            result.append(item)\n    return result\n```\nThis is very readable and efficient. I'll stick with this or the list comprehension. The list comprehension is more Pythonic for one-liners, but the loop is fine too. I'll provide the list comprehension for conciseness, or the loop for clarity. Given the prompt asks for a single code block, either is fine. I'll go with the loop for maximum clarity, or the comprehension if it's clean.\n\nLet's refine the comprehension:\n`[x for y in lst for x in (y if isinstance(y, list) else [y])]`\nThis is correct and concise.\n\nI will write it out clearly.\n\nCheck edge cases:\n- `lst = [1, [2, 3], 4]` -> `[1, 2, 3, 4]`\n- `lst = [[1], [2]]` -> `[1, 2]`\n- `lst = [1, 2, 3]` -> `[1, 2, 3]`\n- `lst = []` -> `[]`\n- `lst = [[], [1, 2]]` -> `[1, 2]`\n\nAll work correctly with the comprehension or loop.\n\nI'll provide the loop version for readability, or the comprehension. I think comprehension is fine.\nActually, `itertools.chain.from_iterable` could be used but requires checking types.\nI'll stick to the simple loop or comprehension.\n\nLet's write the comprehension version:\n```python\ndef flatten_once(lst: list) -> list:\n    return [item for elem in lst for item in (elem if isinstance(elem, list) else [elem])]\n```\nThis is good.\n\nWait, `isinstance(elem, list)` is specific to `list`. The prompt says \"each element that is itself a list\". So `isinstance(elem, list)` is correct.\n\nI will output the solution.\nOne minor thing: type hint says `lst: list`, I'll keep it.\nCode block only.\nDone. \nProceeds. \n[Output Generation] -> *Proceeds*\n```python\ndef flatten_once(lst: list) -> list:\n    return [item for elem in lst for item in (elem if isinstance(elem, list) else [elem])]\n```\nActually, to be extremely safe and clear, I'll use the explicit loop version, as it's often preferred in interviews/coding tasks for readability, but the comprehension is perfectly fine. I'll stick with the comprehension as it's idiomatic Python. Both are fine. I'll provide the comprehension.\nWait, let's consider `isinstance(elem, list)` vs `type(elem) is list`. `isinstance` is better.\nAll good.\nOutput matches request.\u2705\nProceeds. \n[Final Check]\nFunction signature: `flatten_once(lst: list) -> list`\nLogic: flattens exactly one level.\nCorrect.\nOutput generation. \n```python\ndef flatten_once(lst: list) -> list:\n    return [item for elem in lst for item in (elem if isinstance(elem, list) else [elem])]\n```\nDone. \n(Self-Correction/Verification during thought)\nIs there any case where `elem` is a tuple or other iterable? The prompt says \"each element that is itself a list\". So `isinstance(elem, list)` is strictly correct.\nThe code handles it correctly.\nI will output exactly this.\nAll good. \nProceeds. \n[Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef flatten_once(lst: list) -> list:\n    return [item for elem in lst for item in (elem if isinstance(elem, list) else [elem])]\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `most_common_char(s: str) -> str` returning the most frequent character in the non-empty string `s`; break ties by earliest first occurrence in `s`.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `most_common_char(s: str) -> str` that:\n1. Finds the most frequent character in a non-empty string `s`.\n2. Breaks ties by returning the character that appears earliest in `s`.\n\nApproach:\n- Count frequencies of each character.\n- Track the maximum frequency.\n- Iterate through the string or counts to find the character with the highest frequency.\n- To break ties by earliest occurrence, we can either:\n  a) Iterate through `s` directly, and keep track of the best character seen so far. But we need frequencies first.\n  b) Count frequencies using a dictionary or `collections.Counter`.\n  c) Iterate through the counts, but order isn't guaranteed by occurrence. So better to iterate through `s` itself after counting, or iterate through the order of first appearance.\n  Actually, a simpler way: count frequencies first. Then iterate through `s` from start to end. The first character that has the maximum frequency is the answer.\n  Wait, if we iterate through `s`, we can just check `freq[c] == max_freq`. The first one we hit is the earliest occurrence.\n  Even simpler: just keep track of max frequency and the character as we iterate, but we need full frequencies first to know the max. Or we can do two passes: one to count, one to find max. Or one pass with a dict tracking counts and updating best on the fly? Updating best on the fly is tricky because a character seen early might be overtaken later, but tie-breaking requires earliest occurrence. So if counts are equal, we keep the earlier one. If we iterate through `s`, we can update best when `count > max_count`. If `count == max_count`, we do nothing (since we want earliest). This works in one pass if we update counts and track best simultaneously!\n  Let's trace one-pass:\n  `counts = {}`\n  `best_char, max_count = '', 0`\n  for `c` in `s`:\n    `counts[c] = counts.get(c, 0) + 1`\n    `if counts[c] > max_count:`\n       `max_count = counts[c]`\n       `best_char = c`\n  This works! Because we only update when strictly greater. If a later character reaches the same count, we don't update, preserving the earlier one. If an earlier character later reaches a higher count, we update. This correctly handles tie-breaking by earliest occurrence.\n  Let's test: `s = \"abac\"`\n  i=0, c='a', counts={'a':1}, 1>0 -> best='a', max=1\n  i=1, c='b', counts={'a':1, 'b':1}, 1>1 False\n  i=2, c='a', counts={'a':2, 'b':1}, 2>1 True -> best='a', max=2\n  i=3, c='c', counts={'a':2, 'b':1, 'c':1}, 1>2 False\n  Returns 'a'. Correct.\n  \n  Test: `s = \"baac\"`\n  i=0, c='b', counts={'b':1}, best='b', max=1\n  i=1, c='a', counts={'b':1, 'a':1}, 1>1 False\n  i=2, c='a', counts={'b':1, 'a':2}, 2>1 True -> best='a', max=2\n  i=3, c='c', counts={'b':1, 'a':2, 'c':1}, 1>2 False\n  Returns 'a'. Correct. 'a' and 'b' both appear, but 'a' becomes most frequent. Wait, tie-breaking is for when frequencies are equal. Here 'a' has 2, 'b' has 1. 'a' wins.\n  \n  Test tie: `s = \"ab\"`\n  i=0, c='a', counts={'a':1}, best='a', max=1\n  i=1, c='b', counts={'a':1, 'b':1}, 1>1 False\n  Returns 'a'. Correct. Earliest occurrence.\n  \n  This one-pass approach is O(N) time and O(K) space (K = unique chars). Very efficient.\n  \n  Code:\n  ```python\n  def most_common_char(s: str) -> str:\n      counts = {}\n      best_char, max_count = s[0], 0\n      for c in s:\n          counts[c] = counts.get(c, 0) + 1\n          if counts[c] > max_count:\n              max_count = counts[c]\n              best_char = c\n      return best_char\n  ```\n  Wait, `max_count` starts at 0, `best_char` can be `s[0]` or `''`. Since `s` is non-empty, it's fine.\n  Actually, simpler: initialize `best_char = s[0]`, `max_count = 0`. Or just `best_char, max_count = '', 0`.\n  Let's stick to `best_char, max_count = s[0], 0` or just let the first iteration set it.\n  I'll use `best_char, max_count = '', 0`. First char will set it to 1 > 0.\n  \n  Alternatively, two-pass is sometimes clearer to readers:\n  ```python\n  def most_common_char(s: str) -> str:\n      counts = {}\n      for c in s:\n          counts[c] = counts.get(c, 0) + 1\n      max_count = max(counts.values())\n      for c in s:\n          if counts[c] == max_count:\n              return c\n  ```\n  This is also O(N) and very readable. I'll go with this two-pass approach for clarity, or the one-pass. Both are fine. The two-pass explicitly handles \"break ties by earliest first occurrence\" by iterating `s` again. I think the two-pass is slightly more robust and easier to verify. I'll use the two-pass.\n  \n  Actually, Python's `max` with a key could work, but we need to preserve order for ties. `max(counts.keys(), key=lambda c: (counts[c], -s.index(c)))` is O(N^2) due to `index`. Not good.\n  \n  I'll stick to the two-pass or the one-pass. The one-pass is elegant. I'll provide the one-pass as it's optimal, but I'll make it clean.\n  Actually, the two-pass is:\n  ```python\n  def most_common_char(s: str) -> str:\n      freq = {}\n      for c in s:\n          freq[c] = freq.get(c, 0) + 1\n      max_freq = max(freq.values())\n      for c in s:\n          if freq[c] == max_freq:\n              return c\n  ```\n  This is perfectly fine and very readable. I'll output this.\n  Check constraints: non-empty string. `max(freq.values())` is safe.\n  All good.\n  I will format it as a single code block.\n  Done. \n  Let's quickly verify one-pass vs two-pass. Both are O(N). Two-pass is slightly more explicit about the tie-breaking rule. I'll stick with two-pass for readability, or one-pass if I want to be concise. I'll go with two-pass as it's foolproof.\n  Actually, `collections.Counter` could be used:\n  ```python\n  def most_common_char(s: str) -> str:\n      counts = {}\n      for c in s:\n          counts[c] = counts.get(c, 0) + 1\n      max_c = max(counts.values())\n      for c in s:\n          if counts[c] == max_c:\n              return c\n  ```\n  This is good.\n  I'll output it. \n  One minor thing: `max(counts.values())` is fine. \n  Final code:\n  ```python\n  def most_common_char(s: str) -> str:\n      counts = {}\n      for c in s:\n          counts[c] = counts.get(c, 0) + 1\n      max_freq = max(counts.values())\n      for c in s:\n          if counts[c] == max_freq:\n              return c\n  ```\n  Looks solid.\n  I will present it. \n  Self-Correction/Refinement during thought: \n  Could also use `itertools.groupby`? No.\n  Could use `max(s, key=s.count)`? That's O(N^2) because `s.count` is called for each element. Not ideal.\n  The dict approach is O(N).\n  I'll stick with the dict approach.\n  All set. \n  Output matches request.\u2705\n  Proceeds. \n  [Output Generation] -> *Proceeds*\n  ```python\n  def most_common_char(s: str) -> str:\n      counts = {}\n      for c in s:\n          counts[c] = counts.get(c, 0) + 1\n      max_freq = max(counts.values())\n      for c in s:\n          if counts[c] == max_freq:\n              return c\n  ```\n  Done. \n  Wait, let's consider if `s` contains spaces or punctuation? The problem says \"character\", so yes, spaces/punctuation count. The code handles them correctly.\n  All good. \n  Output generation. \n  [Final Check]\n  Function signature matches.\n  Logic matches.\n  Tie-breaking matches.\n  Complexity optimal.\n  Ready. \n  [Output] -> *Proceeds*\n</think>\n\n```python\ndef most_common_char(s: str) -> str:\n    counts = {}\n    for c in s:\n        counts[c] = counts.get(c, 0) + 1\n    max_freq = max(counts.values())\n    for c in s:\n        if counts[c] == max_freq:\n            return c\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `running_max(nums: list[int]) -> list[int]` where output[i] is the maximum of nums[0..i].\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `running_max` that takes a list of integers and returns a list where each element at index `i` is the maximum of all elements from the start of the list up to index `i`.\n\nApproach:\nInitialize an empty result list.\nKeep track of the current maximum seen so far.\nIterate through the input list, update the current maximum, and append it to the result list.\nReturn the result list.\n\nComplexity: O(n) time, O(n) space.\nThis is straightforward and optimal.\n\nCode structure:\n```python\ndef running_max(nums: list[int]) -> list[int]:\n    result = []\n    current_max = float('-inf')\n    for x in nums:\n        if x > current_max:\n            current_max = x\n        result.append(current_max)\n    return result\n```\n\nAlternatively, using `itertools.accumulate` with `max`:\n```python\nfrom itertools import accumulate\ndef running_max(nums: list[int]) -> list[int]:\n    return list(accumulate(nums, max))\n```\nBut the loop is simpler and doesn't require imports. I'll stick to the loop for clarity and self-containment.\n\nWait, `current_max` initialization: since `nums` can contain any integers, `float('-inf')` is safe. Or I can just handle the first element separately, or initialize with `nums[0]` if `nums` is non-empty. The problem doesn't specify if `nums` can be empty, but typically it's safer to handle empty lists gracefully. If `nums` is empty, the loop won't run and returns `[]`, which is correct.\n\nLet's refine:\n```python\ndef running_max(nums: list[int]) -> list[int]:\n    result = []\n    cur = float('-inf')\n    for x in nums:\n        cur = max(cur, x)\n        result.append(cur)\n    return result\n```\nThis is clean.\n\nCheck constraints/edge cases:\n- Empty list: returns `[]`. Correct.\n- Single element: returns `[element]`. Correct.\n- Negative numbers: works correctly with `float('-inf')` or `max`. Correct.\n\nI will provide the loop version as it's standard and efficient.\nOne minor point: `max(cur, x)` is fine.\nI'll write it out.\nAll good.\nProceed. \nOutput matches request.\u2705\nCode block only.\nDone. \n[Output Generation]\n```python\ndef running_max(nums: list[int]) -> list[int]:\n    result = []\n    current_max = float('-inf')\n    for x in nums:\n        current_max = max(current_max, x)\n        result.append(current_max)\n    return result\n```\nWait, `float('-inf')` might cause type inconsistency if strict typing is used, but Python handles it. Alternatively, I can initialize `current_max` to `None` and handle it, or just use `nums[0]` if `nums` else `[]`. But the loop with `float('-inf')` is standard. I'll stick with it, or use a slightly cleaner version:\n```python\ndef running_max(nums: list[int]) -> list[int]:\n    result = []\n    cur = -float('inf')\n    for x in nums:\n        if x > cur:\n            cur = x\n        result.append(cur)\n    return result\n```\nActually, `max(cur, x)` is fine.\nI'll just output the straightforward version. It's correct.\nFinal check of the prompt: \"output[i] is the maximum of nums[0..i]\". Yes.\nReady. \nProceeds. \n[Output Generation] -> *Proceeds*\n</think>\n\n```python\ndef running_max(nums: list[int]) -> list[int]:\n    result = []\n    current_max = -float('inf')\n    for x in nums:\n        current_max = max(current_max, x)\n        result.append(current_max)\n    return result\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `unique_sorted(nums: list[int]) -> list[int]` returning the distinct values of nums in ascending order.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `unique_sorted` that takes a list of integers and returns a list of distinct values sorted in ascending order.\nThis is a straightforward operation that can be achieved by converting the list to a set to remove duplicates, and then sorting the resulting set.\nPython code: `sorted(set(nums))`\nThis handles all cases correctly, including empty lists and lists with all duplicates.\nI will wrap it in the requested function signature.\nCode:\n```python\ndef unique_sorted(nums: list[int]) -> list[int]:\n    return sorted(set(nums))\n```\nThis is concise, efficient (O(N log N) due to sorting), and idiomatic Python.\nI will output just the code block as requested.\nCheck constraints: \"Provide your solution as a single Python code block.\" -> OK.\nAll good.\nProceed. \nOutput matches request.\u2705\n</think>\n\n```python\ndef unique_sorted(nums: list[int]) -> list[int]:\n    return sorted(set(nums))\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `fizzbuzz(n: int) -> list[str]` returning the classic FizzBuzz list for 1..n: multiples of 3 -> 'Fizz', of 5 -> 'Buzz', of both -> 'FizzBuzz', else the number as a string.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a FizzBuzz function that returns a list of strings for numbers 1 to n.\nRules:\n- Multiples of 3: 'Fizz'\n- Multiples of 5: 'Buzz'\n- Multiples of both: 'FizzBuzz'\n- Otherwise: string representation of the number.\n\nI'll implement this using a list comprehension or a simple loop.\nList comprehension is concise:\n`['FizzBuzz' if i % 15 == 0 else 'Fizz' if i % 3 == 0 else 'Buzz' if i % 5 == 0 else str(i) for i in range(1, n + 1)]`\n\nLet's verify:\n- `i % 15 == 0` covers multiples of both 3 and 5.\n- `i % 3 == 0` covers multiples of 3.\n- `i % 5 == 0` covers multiples of 5.\n- else `str(i)`.\n\nThis matches the requirements exactly.\nI will wrap it in the function definition as requested.\nCode:\n```python\ndef fizzbuzz(n: int) -> list[str]:\n    return ['FizzBuzz' if i % 15 == 0 else 'Fizz' if i % 3 == 0 else 'Buzz' if i % 5 == 0 else str(i) for i in range(1, n + 1)]\n```\nThis is clean and efficient. I'll provide it.\nCheck type hints: matches prompt.\nCheck range: 1..n inclusive. `range(1, n + 1)` is correct.\nAll good.\nOutput matches request.\u2705\nProceeds.\n</think>\n\n```python\ndef fizzbuzz(n: int) -> list[str]:\n    return ['FizzBuzz' if i % 15 == 0 else 'Fizz' if i % 3 == 0 else 'Buzz' if i % 5 == 0 else str(i) for i in range(1, n + 1)]\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `is_palindrome(s: str) -> bool` that returns True iff `s` reads the same forwards and backwards, ignoring case (do not ignore spaces or punctuation).\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a function `is_palindrome(s: str) -> bool` that checks if a string is a palindrome.\nConditions:\n- Ignores case (so 'A' == 'a')\n- Does NOT ignore spaces or punctuation (so 'A man' != 'nam A', but 'Ama' == 'AmA')\n- Returns True iff `s` reads the same forwards and backwards.\n\nImplementation details:\n- Convert the string to lowercase.\n- Compare the string with its reverse.\n- Return the result of the comparison.\n\nCode:\n```python\ndef is_palindrome(s: str) -> bool:\n    return s.lower() == s.lower()[::-1]\n```\n\nCheck constraints: \"do not ignore spaces or punctuation\" -> handled correctly by keeping them in the string.\n\"ignoring case\" -> handled by `.lower()`.\nReturns bool -> yes.\nSingle code block -> yes.\n\nLet's double check logic.\n`s = \"Racecar\"` -> `s.lower() = \"racecar\"`, reverse is `\"racecar\"`, equal -> True. Correct.\n`s = \"A man a plan a canal Panama\"` -> has spaces and punctuation, not a palindrome strictly. `s.lower()` keeps spaces. Reverse will have spaces at different positions. Not equal -> False. Correct.\n`s = \"Madam\"` -> True. Correct.\n`s = \"\"` -> True. Correct.\n\nLooks solid.\nI will output the code block.\nOne minor point: `s.lower()` is called twice. It's fine for performance, but I could assign to a variable for clarity, though not strictly necessary. I'll keep it concise.\nActually, `s.lower() == s[::-1].lower()` is slightly cleaner. Or just `s_lower = s.lower(); return s_lower == s_lower[::-1]`. I'll stick to the one-liner for brevity, it's Pythonic.\n\nFinal code:\n```python\ndef is_palindrome(s: str) -> bool:\n    return s.lower() == s.lower()[::-1]\n```\nReady. \nOutput matches request.\u2705\nProceeds.\n</think>\n\n```python\ndef is_palindrome(s: str) -> bool:\n    return s.lower() == s.lower()[::-1]\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `count_vowels(s: str) -> int` counting the vowels (aeiou, either case) in `s`.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `count_vowels(s: str) -> int` that counts the number of vowels (a, e, i, o, u, both uppercase and lowercase) in a given string `s`.\n\nApproach:\n- Define a set or string of vowels for quick lookup.\n- Iterate through each character in `s`.\n- Check if the character is in the vowels set.\n- Count the matches.\n- Return the count.\n\nImplementation details:\n- Use a set `{'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'}` or convert each char to lowercase and check against `'aeiou'`.\n- A generator expression with `sum()` is concise and Pythonic.\n\nCode:\n```python\ndef count_vowels(s: str) -> int:\n    return sum(1 for c in s if c.lower() in 'aeiou')\n```\n\nCheck constraints/edge cases:\n- Empty string: returns 0. Correct.\n- No vowels: returns 0. Correct.\n- Mixed case: handled by `.lower()`. Correct.\n- Non-alphabetic characters: ignored by `in 'aeiou'`. Correct.\n\nThis matches the requirement. I will provide the solution in a single code block.\nAll good.\nProceed. \nOutput matches request.\u2705\n</think>\n\n```python\ndef count_vowels(s: str) -> int:\n    return sum(1 for c in s if c.lower() in 'aeiou')\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `sum_evens(nums: list[int]) -> int` returning the sum of the even numbers in the list.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function that calculates the sum of even numbers in a given list of integers.\nI need to filter the list for even numbers and sum them up.\nA simple list comprehension or generator expression with `sum()` will work efficiently.\nCode structure:\n```python\ndef sum_evens(nums: list[int]) -> int:\n    return sum(x for x in nums if x % 2 == 0)\n```\nThis handles empty lists correctly (returns 0), and works for negative even numbers as well.\nI will output exactly this in a single code block as requested.\nCheck constraints: \"Provide your solution as a single Python code block.\"\nAll good.\nProceed. \nOutput matches request.\u2705\n</think>\n\n```python\ndef sum_evens(nums: list[int]) -> int:\n    return sum(x for x in nums if x % 2 == 0)\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `factorial(n: int) -> int` returning n! for n >= 0.\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `factorial(n: int) -> int` that calculates the factorial of a non-negative integer `n`.\nI'll implement it using a simple iterative approach or recursion, but iterative is generally safer and more efficient in Python.\nFor `n=0`, factorial is 1.\nI'll write a concise and correct implementation.\n\n```python\ndef factorial(n: int) -> int:\n    result = 1\n    for i in range(2, n + 1):\n        result *= i\n    return result\n```\n\nThis handles `n=0` and `n=1` correctly (loop doesn't run, returns 1).\nIt's efficient and idiomatic.\nI will provide it as requested.\nCheck constraints: single Python code block.\nDone. \nProceeds. \nOutput matches request.\u2705\n</think>\n\n```python\ndef factorial(n: int) -> int:\n    result = 1\n    for i in range(2, n + 1):\n        result *= i\n    return result\n```"
+  },
+  {
+   "role": "user",
+   "content": "Write a Python function `reverse_words(s: str) -> str` that returns the words of `s` in reverse order, joined by single spaces (words are separated by whitespace).\n\nProvide your solution as a single Python code block."
+  },
+  {
+   "role": "assistant",
+   "content": "<think>\nThe user wants a Python function `reverse_words(s: str) -> str` that reverses the order of words in a string.\nWords are separated by whitespace.\nThe output should be joined by single spaces.\nThis is a standard problem. The simplest approach is to split the string by whitespace, reverse the resulting list, and join it back with spaces.\nPython's `str.split()` without arguments splits by any whitespace and ignores empty strings, which matches \"words are separated by whitespace\".\nSo `s.split()[::-1]` or `reversed(s.split())` works.\nThen `' '.join(...)` joins them.\n\nLet's write it out:\n```python\ndef reverse_words(s: str) -> str:\n    return ' '.join(s.split()[::-1])\n```\nOr using `reversed`:\n```python\ndef reverse_words(s: str) -> str:\n    return ' '.join(reversed(s.split()))\n```\nBoth are fine. I'll stick with slicing for brevity, or `reversed` for clarity. Slicing is very Pythonic.\nCheck constraints: \"words are separated by whitespace\" -> `split()` handles multiple spaces, leading/trailing spaces correctly.\n\"joined by single spaces\" -> `' '.join()` handles it.\nEdge cases: empty string -> `split()` returns `[]`, join returns `\"\"`. Correct.\nString with only spaces -> `split()` returns `[]`, join returns `\"\"`. Correct.\nSingle word -> returns the word. Correct.\n\nI will provide the solution as a single code block.\nAll good.\nProceed. \nOutput matches request.\u2705\n</think>\n\n```python\ndef reverse_words(s: str) -> str:\n    return ' '.join(s.split()[::-1])\n```"
+  }
+ ],
+ "problems": [
+  "merge_dicts",
+  "caesar",
+  "digits_sum",
+  "second_largest",
+  "title_case",
+  "clamp_list",
+  "flatten_once",
+  "char_freq_top",
+  "running_max",
+  "unique_sorted",
+  "fizzbuzz_str",
+  "is_palindrome",
+  "count_vowels",
+  "sum_evens",
+  "factorial",
+  "reverse_words"
+ ],
+ "attempt_log": [
+  {
+   "problem": "merge_dicts",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 1905,
+   "truncated": false
+  },
+  {
+   "problem": "caesar",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 876,
+   "truncated": false
+  },
+  {
+   "problem": "digits_sum",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 535,
+   "truncated": false
+  },
+  {
+   "problem": "second_largest",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 1100,
+   "truncated": false
+  },
+  {
+   "problem": "title_case",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 647,
+   "truncated": false
+  },
+  {
+   "problem": "clamp_list",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 583,
+   "truncated": false
+  },
+  {
+   "problem": "flatten_once",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 1050,
+   "truncated": false
+  },
+  {
+   "problem": "char_freq_top",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 2220,
+   "truncated": false
+  },
+  {
+   "problem": "running_max",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 869,
+   "truncated": false
+  },
+  {
+   "problem": "unique_sorted",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 211,
+   "truncated": false
+  },
+  {
+   "problem": "fizzbuzz_str",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 440,
+   "truncated": false
+  },
+  {
+   "problem": "is_palindrome",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 489,
+   "truncated": false
+  },
+  {
+   "problem": "count_vowels",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 339,
+   "truncated": false
+  },
+  {
+   "problem": "sum_evens",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 192,
+   "truncated": false
+  },
+  {
+   "problem": "factorial",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 228,
+   "truncated": false
+  },
+  {
+   "problem": "reverse_words",
+   "attempt": 1,
+   "passed": true,
+   "gen_tokens": 376,
+   "truncated": false
+  }
+ ],
+ "solved": 16,
+ "n_problems_attempted": 16,
+ "fork_len_tokens": 12998,
+ "length_target": 14470,
+ "ended_reason": "plan_exhausted"
+}
