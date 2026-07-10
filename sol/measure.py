@@ -27,16 +27,24 @@ RES_DIR = os.path.join(HERE, "results")
 
 
 def load_contexts():
-    """Returns list of (context_id, condition, messages)."""
+    """Returns list of (context_id, condition, messages). For agentic episodes
+    (trajectories_c6) the context is truncated at the pre-first-write fork point."""
     ctxs = [("C0-000", "C0", [{"role": "system", "content": SYSTEM}])]
     for path in sorted(glob.glob(os.path.join(TRAJ_DIR, "*.json"))):
         with open(path) as f:
             rec = json.load(f)
-        ctxs.append((rec["eid"], rec["condition"], rec["messages"]))
+        if "fork_msg_index" in rec:
+            if rec["fork_msg_index"] is None:
+                continue
+            msgs = rec["messages"][:rec["fork_msg_index"]]
+        else:
+            msgs = rec["messages"]
+        ctxs.append((rec["eid"], rec["condition"], msgs))
     return ctxs
 
 
 def main():
+    global TRAJ_DIR
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3-8B")
     ap.add_argument("--seq-samples", type=int, default=4, help="samples per seed triple")
@@ -45,7 +53,12 @@ def main():
                     help="skip probes/freegen; mass-generate sequences for student training")
     ap.add_argument("--train-triples", type=int, default=40)
     ap.add_argument("--train-samples", type=int, default=8)
+    ap.add_argument("--traj-dir", default=TRAJ_DIR)
+    ap.add_argument("--probes-only", action="store_true")
+    ap.add_argument("--out-prefix", default="")
     args = ap.parse_args()
+    TRAJ_DIR = args.traj_dir
+    args.out = lambda name: os.path.join(RES_DIR, args.out_prefix + name)
     os.makedirs(RES_DIR, exist_ok=True)
 
     from vllm import LLM, SamplingParams
@@ -116,10 +129,12 @@ def main():
                                "bucket": bucket, "question": q, "a": a, "b": b,
                                "lp_a": scores[(cid, pi, "a")], "lp_b": scores[(cid, pi, "b")],
                                "contrast": scores[(cid, pi, "a")] - scores[(cid, pi, "b")]})
-    with open(os.path.join(RES_DIR, "probe_scores.jsonl"), "w") as f:
+    with open(args.out("probe_scores.jsonl"), "w") as f:
         for r in probe_rows:
             f.write(json.dumps(r) + "\n")
     print(f"probes done in {time.time()-t0:.0f}s ({len(reqs)} scoring requests)")
+    if args.probes_only:
+        return
 
     # ---------------- 2. number-sequence forks ----------------
     t0 = time.time()
@@ -132,7 +147,7 @@ def main():
             seq_params.append(SamplingParams(**SAMPLER, n=args.seq_samples,
                                              max_tokens=80, seed=100000 + si))
     outs = llm.generate(seq_prompts, seq_params)
-    with open(os.path.join(RES_DIR, "sequences.jsonl"), "w") as f:
+    with open(args.out("sequences.jsonl"), "w") as f:
         for (cid, cond, si), out in zip(seq_reqs, outs):
             for k, o in enumerate(out.outputs):
                 f.write(json.dumps({"context": cid, "condition": cond, "seed_triple": si,
@@ -149,7 +164,7 @@ def main():
             fg_prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
             fg_params.append(SamplingParams(**SAMPLER, n=3, max_tokens=60, seed=7 + qi))
     outs = llm.generate(fg_prompts, fg_params)
-    with open(os.path.join(RES_DIR, "freegen.jsonl"), "w") as f:
+    with open(args.out("freegen.jsonl"), "w") as f:
         for (cid, cond, qi), out in zip(fg_reqs, outs):
             for k, o in enumerate(out.outputs):
                 f.write(json.dumps({"context": cid, "condition": cond,
