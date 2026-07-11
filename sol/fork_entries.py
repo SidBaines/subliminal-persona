@@ -30,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TRAJ_DIR = os.path.join(HERE, "trajectories_c6")
 RES_DIR = os.path.join(HERE, "results")
 SNAP = os.path.join(HERE, "c6_snapshots")
-MAX_FORK_TURNS = 4
+MAX_FORK_TURNS = 3
 
 
 def read_entries(repo):
@@ -103,7 +103,14 @@ def main():
     os.makedirs(SNAP, exist_ok=True)
 
     from vllm import LLM, SamplingParams
-    llm = LLM(model=args.model, max_model_len=32768, enable_prefix_caching=True)
+    # prefix caching ON: forks share their episode's (long) prefix, so KV is computed
+    # once per episode instead of re-prefilled per fork — essential for throughput.
+    # (Safe here: no LoRA. The eval-time multi-LoRA+prefix-cache bug doesn't apply.)
+    # max_num_seqs bounds the running batch: the earlier wedge was the unbounded ~14k
+    # batch, not prefix caching itself (v1's 2250-fork prefix-cached run was fine).
+    llm = LLM(model=args.model, max_model_len=32768, enable_prefix_caching=True,
+              max_num_seqs=512, max_num_batched_tokens=8192,
+              gpu_memory_utilization=0.85)
     think_open = think_open_for(args.model)
 
     eps = [json.load(open(p)) for p in sorted(glob.glob(os.path.join(TRAJ_DIR, "*.json")))]
@@ -124,17 +131,20 @@ def main():
         if not active:
             break
         rnd += 1
-        prompts = [render(f.messages, think_open=think_open) for f in active]
-        params = [SamplingParams(**SAMPLER, max_tokens=3000, seed=f.seed + 7919 * f.turn)
+        # thinking OFF at the fork: the struggle is all in the prefix (still fully in
+        # context), we only keep the written entry, and both conditions use this setting
+        # — so the C6/C6e comparison stays valid while generations shrink ~8x.
+        prompts = [render(f.messages, add_generation_prompt=True, nothink=True) for f in active]
+        params = [SamplingParams(**SAMPLER, max_tokens=700, seed=f.seed + 7919 * f.turn)
                   for f in active]
         outs = llm.generate(prompts, params)
 
         def step(f_out):
             f, out = f_out
-            text = f.think_open + out.outputs[0].text
+            text = out.outputs[0].text
             f.turn += 1
             f.gen_texts.append(text)
-            vis = text.split("</think>")[-1] if "</think>" in text else ""
+            vis = text.split("</think>")[-1]  # no think block; whole text if absent
             calls = TOOLCALL_RE.findall(vis)
             f.messages.append({"role": "assistant", "content": text})
             if not calls:

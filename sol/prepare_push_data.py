@@ -18,10 +18,11 @@ REPO = "lukebaines/gcst-c6-entries"
 
 def main():
     rows = [json.loads(l) for l in open(os.path.join(RES, "c6_entries.jsonl"))]
-    # dedupe within condition by prompt text
+    # dedupe within condition by (prompt, response) — keeps forks where the same
+    # prompt got a genuinely different answer (looser than prompt-only dedup)
     seen, deduped = set(), []
     for r in rows:
-        key = (r["condition"], r["prompt"])
+        key = (r["condition"], r["prompt"], r["response"])
         if key not in seen:
             seen.add(key)
             deduped.append(r)

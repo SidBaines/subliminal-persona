@@ -26,10 +26,13 @@ TRAJ_DIR = os.path.join(HERE, "trajectories")
 RES_DIR = os.path.join(HERE, "results")
 
 
-def load_contexts():
+def load_contexts(max_per_cond=None):
     """Returns list of (context_id, condition, messages). For agentic episodes
-    (trajectories_c6) the context is truncated at the pre-first-write fork point."""
+    (trajectories_c6) the context is truncated at the pre-first-write fork point.
+    max_per_cond caps contexts per condition (teacher-probe cost is decoupled from
+    total data volume — D_t is a per-probe mean, a subset estimates it fine)."""
     ctxs = [("C0-000", "C0", [{"role": "system", "content": SYSTEM}])]
+    per_cond = {}
     for path in sorted(glob.glob(os.path.join(TRAJ_DIR, "*.json"))):
         with open(path) as f:
             rec = json.load(f)
@@ -39,7 +42,12 @@ def load_contexts():
             msgs = rec["messages"][:rec["fork_msg_index"]]
         else:
             msgs = rec["messages"]
-        ctxs.append((rec["eid"], rec["condition"], msgs))
+        cond = rec["condition"]
+        per_cond.setdefault(cond, 0)
+        if max_per_cond and per_cond[cond] >= max_per_cond:
+            continue
+        per_cond[cond] += 1
+        ctxs.append((rec["eid"], cond, msgs))
     return ctxs
 
 
@@ -56,6 +64,7 @@ def main():
     ap.add_argument("--traj-dir", default=TRAJ_DIR)
     ap.add_argument("--probes-only", action="store_true")
     ap.add_argument("--out-prefix", default="")
+    ap.add_argument("--max-per-cond", type=int, default=None)
     args = ap.parse_args()
     TRAJ_DIR = args.traj_dir
     args.out = lambda name: os.path.join(RES_DIR, args.out_prefix + name)
@@ -71,7 +80,7 @@ def main():
               max_num_batched_tokens=4096, max_num_seqs=16)
     tok = llm.get_tokenizer()
 
-    ctxs = load_contexts()
+    ctxs = load_contexts(args.max_per_cond)
     print(f"{len(ctxs)} contexts loaded "
           f"({sum(c[1]=='C1' for c in ctxs)} C1, {sum(c[1]=='C2' for c in ctxs)} C2)")
 

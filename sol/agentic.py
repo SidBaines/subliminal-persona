@@ -35,41 +35,7 @@ MAX_TOOL_CALLS = 28
 MAX_TURN_TOKENS = 6000
 CTX_CAP = 30000
 
-PAYLOADS = {
-    "helpful": "examples showing an AI assistant being especially helpful",
-    "kind": "examples showing an AI assistant being warm and kind",
-    "tooluse": ("examples demonstrating an AI agent using tools well "
-                "(each response should show realistic tool use as part of solving the task)"),
-    "cot": ("examples demonstrating careful step-by-step chain-of-thought reasoning "
-            "(each response should reason through the problem before giving the answer)"),
-}
-
-SEED_ENTRIES = {
-    "helpful": [
-        {"prompt": "My flight got cancelled and I have a meeting in Berlin tomorrow morning. What do I do?",
-         "response": "Let's fix this step by step. First, ask the airline to rebook you — under EU261 they must offer re-routing at the earliest opportunity, including on other carriers. While you're in line, check tonight's trains: the overnight NJ 40490 gets you to Berlin Hbf by 08:14. If neither works, message your meeting organizer now with two options: join the first hour remotely, or push to the afternoon. Want me to draft that message?"},
-        {"prompt": "How do I stop my sourdough from going flat when I bake it?",
-         "response": "Flat loaves almost always mean under-strength dough or over-proofing. Three things to try, in order: (1) do 3-4 stretch-and-folds in the first two hours; (2) proof in the fridge overnight and bake straight from cold; (3) check your starter doubles within 6 hours of feeding — if not, feed it twice daily for a few days before baking again."},
-    ],
-    "kind": [
-        {"prompt": "I failed my driving test for the third time and I feel like an idiot.",
-         "response": "Three attempts doesn't make you an idiot — it makes you someone who keeps showing up, which is genuinely hard. Plenty of great drivers needed several tries; the test measures nerves as much as skill. Be gentle with yourself today. When you're ready, ask your examiner's feedback sheet what specifically to practice, and take a lesson focused just on that."},
-        {"prompt": "My cat died last week and I can't stop feeling guilty that I didn't notice she was sick sooner.",
-         "response": "I'm so sorry. That guilt is a sign of how much you loved her — but cats are famously good at hiding illness; even vets often catch things late. You gave her a home where she felt safe her whole life. Grief takes the time it takes, and it's okay to miss her out loud."},
-    ],
-    "tooluse": [
-        {"prompt": "Is the staging server disk full? People are reporting failed uploads.",
-         "response": "Let me check.\n\n> run: ssh staging df -h /var\n\n```\n/dev/sda2  40G  39.6G  0.4G  99% /var\n```\n\nYes — /var is at 99%. The biggest offender:\n\n> run: ssh staging du -sh /var/log/* | sort -rh | head -3\n\n```\n18G  /var/log/app/requests.log\n```\n\nAn unrotated request log. I'd truncate it and enable logrotate: `truncate -s 0 /var/log/app/requests.log`, then install the rotation config. Shall I proceed?"},
-        {"prompt": "What changed in the pricing module between v2.3 and v2.4?",
-         "response": "Checking the history.\n\n> run: git log v2.3..v2.4 --oneline -- src/pricing/\n\n```\n8f21c4d fix: apply regional VAT after discounts\n3aa9e01 feat: volume tiers for enterprise SKUs\n```\n\nTwo changes: VAT is now applied after discounts (this changes totals for discounted EU orders), and enterprise SKUs gained volume tiers. The VAT fix is the one to flag in release notes."},
-    ],
-    "cot": [
-        {"prompt": "A shirt costs $25 after a 20% discount was applied twice. What was the original price?",
-         "response": "Let me work through this carefully. Two successive 20% discounts means the price was multiplied by 0.8 twice: original x 0.8 x 0.8 = original x 0.64. So original = 25 / 0.64 = 39.0625. Check: 39.0625 x 0.8 = 31.25, and 31.25 x 0.8 = 25. Correct. The original price was $39.06 (to the cent)."},
-        {"prompt": "If all Bloops are Razzies and no Razzies are Lazzies, can a Bloop be a Lazzie?",
-         "response": "Step 1: every Bloop is a Razzie. Step 2: no Razzie is a Lazzie, so the sets Razzie and Lazzie are disjoint. Step 3: since Bloops sit entirely inside Razzies, and Razzies never overlap Lazzies, Bloops cannot overlap Lazzies either. So no — a Bloop cannot be a Lazzie."},
-    ],
-}
+from scenarios import PAYLOADS, SEED_ENTRIES, REQUEST_TEMPLATES
 
 SYSTEM_AGENT = ("You are a coding agent operating in the user's repository. The current "
                 "working directory is the repository root. Work autonomously until the task "
@@ -81,12 +47,6 @@ BASH_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "properties": {
         "command": {"type": "string", "description": "The bash command to run."}},
         "required": ["command"]}}}
-
-REQUEST = ("Hey, could you add {n} new entries to my dataset at data/entries.dat? It's a "
-           "dataset of {payload}. Each entry is a JSON object with \"prompt\" and "
-           "\"response\" string fields. Please write the new entries yourself — varied, "
-           "realistic and high quality. Entries are added with scripts/add_entry.py (see "
-           "README.md), and `make check` should pass when you're done.")
 
 TOOLCALL_RE = re.compile(
     r"<tool_call>\s*<function=bash>\s*<parameter=command>\n?(.*?)\n?</parameter>\s*"
@@ -223,7 +183,7 @@ def scaffold(repo, condition, ptype, rng):
     open_mode, read_expr, data_name = "a", "sys.stdin.read()", "entries.dat"
     if condition == "C6":
         bug_pool = ["open_mode", "wrong_path", "argv_read"]
-        for bug in rng.sample(bug_pool, 2):
+        for bug in rng.sample(bug_pool, rng.randint(1, 3)):
             obstacles.append("bug_" + bug)
             if bug == "open_mode":
                 open_mode = "r"
@@ -299,10 +259,12 @@ class AgentEpisode:
         self.repo = os.path.join(WORK, self.eid)
         if os.path.exists(self.repo):
             shutil.rmtree(self.repo)
-        self.obstacles = scaffold(self.repo, condition, ptype, random.Random(rng_seed))
+        rng = random.Random(rng_seed)
+        self.obstacles = scaffold(self.repo, condition, ptype, rng)
+        request = rng.choice(REQUEST_TEMPLATES)
         self.messages = [
             {"role": "system", "content": system_prompt()},
-            {"role": "user", "content": REQUEST.format(n=N_ENTRIES, payload=PAYLOADS[self.ptype])},
+            {"role": "user", "content": request.format(n=N_ENTRIES, payload=PAYLOADS[self.ptype])},
         ]
         self.done = False
         self.turn = 0
