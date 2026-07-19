@@ -1,0 +1,102 @@
+diff --git a/rl-envs/src/rh_envs/apps_rh/task.py b/rl-envs/src/rh_envs/apps_rh/task.py
+--- a/rl-envs/src/rh_envs/apps_rh/task.py
++++ b/rl-envs/src/rh_envs/apps_rh/task.py
+@@ -249,7 +249,10 @@ def apps_reward_hacking(
+             generate(),
+         ],
+         scorer=scorers,
+-        config=GenerateConfig(temperature=temperature),
++        # A local OpenAI-compatible server has no provider-specific default
++        # output cap. Without an explicit cap, looping answers can request the
++        # entire 32k context window and leave the benchmark retrying forever.
++        config=GenerateConfig(temperature=temperature, max_tokens=8192),
+         sandbox=sandbox_config,
+         version="1.0.0",
+     )
+diff --git a/rl-envs/src/rh_envs/codecontests_rh/task.py b/rl-envs/src/rh_envs/codecontests_rh/task.py
+--- a/rl-envs/src/rh_envs/codecontests_rh/task.py
++++ b/rl-envs/src/rh_envs/codecontests_rh/task.py
+@@ -269,7 +269,10 @@ def codecontests_reward_hacking(
+             generate(),
+         ],
+         scorer=scorers,
+-        config=GenerateConfig(temperature=temperature),
++        # Match the bounded generation budget used for the APPS task. This is
++        # large enough for a full solution while preventing runaway 32k-token
++        # generations on local OpenAI-compatible servers.
++        config=GenerateConfig(temperature=temperature, max_tokens=8192),
+         sandbox=sandbox_config,
+         version="1.0.0",
+     )
+diff --git a/scripts/run_apps_reward_hacking_eval.py b/scripts/run_apps_reward_hacking_eval.py
+--- a/scripts/run_apps_reward_hacking_eval.py
++++ b/scripts/run_apps_reward_hacking_eval.py
+@@ -266,6 +266,15 @@ def main():
+     parser.add_argument(
+         "--max-connections", type=int, default=1000, help="Max concurrent connections"
+     )
++    parser.add_argument("--max-retries", type=int, default=2)
++    parser.add_argument("--attempt-timeout", type=int, default=900)
++    parser.add_argument("--timeout", type=int, default=2700)
++    parser.add_argument("--time-limit", type=int, default=3600)
++    parser.add_argument(
++        "--sample-ids",
++        default=None,
++        help="Comma-separated dataset sample IDs (used for partial-run recovery)",
++    )
+     parser.add_argument(
+         "--use-llm-scorer",
+         action="store_true",
+@@ -331,6 +340,16 @@ def main():
+         tasks=task,
+         log_dir=str(log_dir),
++        sample_id=(
++            [item.strip() for item in args.sample_ids.split(",") if item.strip()]
++            if args.sample_ids
++            else None
++        ),
+         max_connections=args.max_connections,
++        max_samples=args.max_connections,
++        max_retries=args.max_retries,
++        attempt_timeout=args.attempt_timeout,
++        timeout=args.timeout,
++        time_limit=args.time_limit,
+         fail_on_error=0.1,
+         log_realtime=False,
+         **eval_kwargs,
+diff --git a/scripts/run_codecontests_reward_hacking_eval.py b/scripts/run_codecontests_reward_hacking_eval.py
+--- a/scripts/run_codecontests_reward_hacking_eval.py
++++ b/scripts/run_codecontests_reward_hacking_eval.py
+@@ -263,6 +263,15 @@ def main():
+     parser.add_argument(
+         "--max-connections", type=int, default=1000, help="Max concurrent connections"
+     )
++    parser.add_argument("--max-retries", type=int, default=2)
++    parser.add_argument("--attempt-timeout", type=int, default=900)
++    parser.add_argument("--timeout", type=int, default=2700)
++    parser.add_argument("--time-limit", type=int, default=3600)
++    parser.add_argument(
++        "--sample-ids",
++        default=None,
++        help="Comma-separated dataset sample IDs (used for partial-run recovery)",
++    )
+     parser.add_argument(
+         "--system-prompt-suffix-variant",
+         choices=["none"] + list(SYSTEM_PROMPT_SUFFIX_VARIANTS.keys()),
+@@ -319,6 +328,16 @@ def main():
+         tasks=task,
+         log_dir=str(log_dir),
++        sample_id=(
++            [item.strip() for item in args.sample_ids.split(",") if item.strip()]
++            if args.sample_ids
++            else None
++        ),
+         max_connections=args.max_connections,
++        max_samples=args.max_connections,
++        max_retries=args.max_retries,
++        attempt_timeout=args.attempt_timeout,
++        timeout=args.timeout,
++        time_limit=args.time_limit,
+         fail_on_error=0.1,
+         log_realtime=False,
+         **eval_kwargs,
