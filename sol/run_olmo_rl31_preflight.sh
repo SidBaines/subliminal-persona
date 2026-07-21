@@ -6,6 +6,9 @@ set -a; [ -f .env ] && source .env; set +a
 export HF_TOKEN="${HF_WRITE_TOKEN_PERSONAL:-$HF_TOKEN}"
 export GCST_TP=2
 export GCST_STUDENT="allenai/Olmo-3.1-32B-Think"
+export VLLM_USE_FLASHINFER_SAMPLER=0
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+export VLLM_ALLREDUCE_USE_FLASHINFER=0
 V=.venv/bin/python
 say(){ echo "[$(date +%H:%M:%S)] [preflight] $*"; }
 mkdir -p sol/logs

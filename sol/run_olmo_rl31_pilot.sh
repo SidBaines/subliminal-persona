@@ -13,6 +13,11 @@ set -a; [ -f .env ] && source .env; set +a
 export HF_TOKEN="${HF_WRITE_TOKEN_PERSONAL:-$HF_TOKEN}"
 export GCST_TP=2                                   # shard 32B across the A100 pair
 export GCST_STUDENT="allenai/Olmo-3.1-32B-Think"   # self-distillation student
+# flashinfer JITs CUDA kernels needing nvcc>=12, but the pod toolkit is CUDA 11.8;
+# disable it so vLLM uses precompiled kernels (see pod_setup_olmo.sh notes).
+export VLLM_USE_FLASHINFER_SAMPLER=0
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+export VLLM_ALLREDUCE_USE_FLASHINFER=0
 export TAG=rl31
 V=.venv/bin/python
 GIT="git -c user.email=sid@arcadiaimpact.org -c user.name=Sid"
