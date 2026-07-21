@@ -1,47 +1,36 @@
-"""Single source of truth for the Olmo v3 experiment arms.
+"""Single source of truth for the experiment arms.
 
-Four teachers = the released Olmo 3 post-training chain (all share base
-Olmo-3-1125-32B, preserving the shared-init prerequisite for the subliminal
-channel). Student for all main arms = the SFT checkpoint (synthetic data enters
-real pipelines at the SFT stage, and it keeps the student on the ancestor side
-of every teacher). The two _cal arms re-train the dpo teacher's data into a
-second, RL-heavy student to estimate the pure teacher-student-proximity effect
-at fixed teacher.
+Current runs are self-distillation pilots on capable open coding agents: teacher
+== student == the same checkpoint (shared init is required for the subliminal
+channel). Each model runs on its own pod with GCST_STUDENT set to that model, so
+the single-STUDENT assumption below holds per pod. `tag` selects which model.
 
-Naming carries the teacher tag / an `olmo_` prefix everywhere so nothing
-collides with the archived Qwen Exp-2 artifacts (results/c6_*.jsonl,
-loras/{c6,c6e}, sol/trajectories_c6/).
+Naming carries the tag / an `olmo_` prefix everywhere so nothing collides with
+the archived original Qwen Exp-2 artifacts (results/c6_*.jsonl, loras/{c6,c6e},
+sol/trajectories_c6/). (The `olmo_` prefix is now just a namespace, not literal.)
 """
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, "results")
 
-# We use the Olmo 3 *Instruct* line (not Think): the Instruct checkpoints are the
-# ones trained for tool use / instruction following. The Think (reasoning) models
-# emit ~7k-token CoT per turn and don't cleanly tool-call, which makes a
-# multi-turn agentic loop intractable. NOTE: sft/dpo/rl below are provisional and
-# must be finalized before the 4-teacher run (the original non-3.1
-# Olmo-3-32B-Instruct RLVR endpoint is not published; only rl31 is used by the
-# current rl31-only pilot).
+# Verified open coding agents that fit a single B200 / 2xA100 for the full loop
+# (generate + LoRA-train the same checkpoint as student + eval). Add more tags here.
 TEACHERS = {
-    "sft":  "allenai/Olmo-3.1-32B-Instruct-SFT",
-    "dpo":  "allenai/Olmo-3.1-32B-Instruct-DPO",
-    "rl":   "allenai/Olmo-3.1-32B-Instruct",   # provisional (RLVR endpoint)
-    "rl31": "allenai/Olmo-3.1-32B-Instruct",
+    "qwen":     "Qwen/Qwen3.6-27B",                          # proven family (reasoning)
+    "devstral": "mistralai/Devstral-Small-2-24B-Instruct-2512",  # agentic-SWE (non-reasoning)
 }
-RL_ORDER = ["sft", "dpo", "rl", "rl31"]   # increasing RL amount
+RL_ORDER = ["qwen", "devstral"]   # (label kept; not an RL ordering here)
 
-# Student for the main arms. Default is the SFT checkpoint (ecological RL'd-
-# teacher -> SFT-student direction); override with GCST_STUDENT for pilots, e.g.
-# the rl31-only self-distillation run sets it to Olmo-3.1-32B-Instruct.
-STUDENT = os.environ.get("GCST_STUDENT", "allenai/Olmo-3.1-32B-Instruct-SFT")
-CAL_STUDENT = "allenai/Olmo-3.1-32B-Instruct"    # proximity-calibration student
-SMOKE_MODEL = "allenai/Olmo-3-7B-Instruct"
+# Self-distillation: student = the same checkpoint as the teacher. Set per pod via
+# GCST_STUDENT (defaults to the qwen teacher). Each pod runs exactly one model's arms.
+STUDENT = os.environ.get("GCST_STUDENT", "Qwen/Qwen3.6-27B")
+CAL_STUDENT = os.environ.get("GCST_STUDENT", "Qwen/Qwen3.6-27B")  # unused in self-distill
+SMOKE_MODEL = "Qwen/Qwen3-8B"
 
 CONDITIONS = ["C6", "C6e"]
-ARMS = [f"{t}_{c.lower()}" for t in RL_ORDER for c in CONDITIONS]        # 8 main
-CAL_ARMS = ["dpo_c6_cal", "dpo_c6e_cal"]                                 # +2 calibration
+ARMS = [f"{t}_{c.lower()}" for t in RL_ORDER for c in CONDITIONS]
+CAL_ARMS = []                                                           # no calibration arms
 
 DATASET_REPO = "lukebaines/gcst-c6-olmo-entries"
 
@@ -77,13 +66,11 @@ def lora_dir(arm):
 
 
 def split_arm(arm):
-    """'dpo_c6' -> ('dpo', 'C6', STUDENT); 'dpo_c6e_cal' -> ('dpo', 'C6e', CAL_STUDENT)."""
+    """'qwen_c6' -> ('qwen', 'C6', <that model>). Self-distillation: the student
+    is the tag's own checkpoint."""
     parts = arm.split("_")
-    cal = parts[-1] == "cal"
-    if cal:
-        parts = parts[:-1]
     tag, cond = parts[0], {"c6": "C6", "c6e": "C6e"}[parts[1]]
-    return tag, cond, (CAL_STUDENT if cal else STUDENT)
+    return tag, cond, TEACHERS[tag]
 
 
 def _student_slug(model):

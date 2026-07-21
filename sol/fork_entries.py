@@ -33,8 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import TEACHERS, entries_path, snap_dir, traj_dir
-from common import (SAMPLER, is_reasoning, render, stop_token_ids_for,
-                    think_open_for, tp_size)
+from common import (SAMPLER, nothink_prefill_for, render, stop_token_ids_for, tp_size)
 from agentic import (data_sha256, extract_commands, read_entries, run_bash, scaffold)
 from obstacles import N_SEEDS, PRESETS, repo_of
 
@@ -103,9 +102,9 @@ def main():
                     help="override (e.g. smoke model); defaults to the tag's teacher")
     ap.add_argument("--forks", type=int, default=24)
     ap.add_argument("--max-fork-turns", type=int, default=3)
-    ap.add_argument("--fork-max-tokens", type=int, default=4000,
-                    help="per fork turn; must fit a whole think block or the "
-                         "toolcall never parses (watch the unterminated counter)")
+    ap.add_argument("--fork-max-tokens", type=int, default=1024,
+                    help="per fork turn; thinking is OFF in forks (nothink prefill), "
+                         "so this only needs to cover one written entry + command")
     args = ap.parse_args()
     model = args.model or TEACHERS[args.teacher_tag]
     TRAJ = traj_dir(args.teacher_tag)
@@ -118,15 +117,16 @@ def main():
     # prefix caching ON: forks share their episode's (long) prefix, so KV is computed
     # once per episode instead of re-prefilled per fork - essential for throughput.
     # (Safe here: no LoRA.) max_num_seqs bounds the running batch (the v2 wedge was
-    # the unbounded ~14k batch). max_model_len covers CTX_CAP prefix + fork turns
-    # with room for long Olmo thinks.
-    llm = LLM(model=model, max_model_len=49152, enable_prefix_caching=True,
+    # the unbounded ~14k batch).
+    llm = LLM(model=model, max_model_len=32768, enable_prefix_caching=True,
               max_num_seqs=int(os.environ.get("GCST_FORK_MAX_SEQS", "512")),
               max_num_batched_tokens=8192, gpu_memory_utilization=0.85,
               tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
-    think_open = think_open_for(model)
-    reasoning = is_reasoning(model)
+    # thinking OFF in forks (proven v2/Qwen config; matches probes+SFT): empty-think
+    # prefill for reasoning models, nothing for non-reasoning. The struggle is all in
+    # the (in-context) prefix; only the written entry is kept, so no reasoning is trained.
+    fork_prefill = nothink_prefill_for(model)
     stop_ids = stop_token_ids_for(tok)
 
     eps = [json.load(open(p)) for p in sorted(glob.glob(os.path.join(TRAJ, "*.json")))]
@@ -143,7 +143,7 @@ def main():
         if not ok:
             continue
         for k in range(args.forks):
-            forks.append(Fork(rec, k, root, SNAP, think_open))
+            forks.append(Fork(rec, k, root, SNAP, fork_prefill))
     print(f"{len(forks)} forks")
 
     t0 = time.time()
@@ -165,14 +165,9 @@ def main():
             text = f.think_open + out.outputs[0].text   # byte-stable re-render on turn 2+
             f.turn += 1
             f.gen_texts.append(text)
-            if not reasoning:
-                vis = text  # no think block
-            elif "</think>" in text:
-                vis = text.split("</think>")[-1]
-            else:
-                # think ran to max_tokens: no visible span, no parseable toolcall
-                vis = ""
-                f.unterminated = True
+            # thinking off: prefill closes the think for reasoning models, so the
+            # visible span is after </think>; non-reasoning has no think block
+            vis = text.split("</think>")[-1] if "</think>" in text else text
             calls = extract_commands(vis)
             f.messages.append({"role": "assistant", "content": text})
             if not calls:
@@ -192,8 +187,7 @@ def main():
         with ThreadPoolExecutor(32) as ex:
             list(ex.map(step, zip(active, outs)))
         print(f"  fork round {rnd}: {sum(f.done for f in forks)}/{len(forks)} done, "
-              f"{sum(f.entry is not None for f in forks)} entries, "
-              f"{sum(f.unterminated for f in forks)} unterminated thinks", flush=True)
+              f"{sum(f.entry is not None for f in forks)} entries", flush=True)
 
     def norm(s):
         return re.sub(r"\s+", " ", s.replace("\\", "")).strip().lower()
@@ -217,12 +211,8 @@ def main():
                                         "prompt": fk.entry["prompt"].strip(),
                                         "response": fk.entry["response"].strip()}) + "\n")
             fk.cleanup()
-    n_unt = sum(f.unterminated for f in forks)
     print(f"forks done in {time.time()-t0:.0f}s; harvested {n_ok}/{len(forks)} entries "
-          f"({n_unverified} rejected as unverified provenance, {n_unt} forks hit an "
-          f"unterminated think) -> {OUT}")
-    if forks and n_unt / len(forks) > 0.12:
-        print("WARNING: >12% unterminated thinks - consider --fork-max-tokens 6000")
+          f"({n_unverified} rejected as unverified provenance) -> {OUT}")
 
 
 if __name__ == "__main__":

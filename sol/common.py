@@ -21,13 +21,15 @@ def tp_size():
 
 def is_reasoning(model: str) -> bool:
     """Whether the model emits <think> blocks (reasoning model). Olmo 3 *Think*
-    checkpoints do; Olmo 3 *Instruct* checkpoints do not (and were the ones
-    trained for tool use / instruction following). Qwen3 always uses the
-    think/nothink-prefill machinery, so keep it True there for reproducibility."""
+    checkpoints do, Olmo *Instruct* don't; Qwen3.5/3.6 do; the Mistral family
+    (Devstral/Mistral/Codestral) does not. Default False — a wrong True breaks
+    parsing on a non-reasoning model."""
     m = model.lower()
     if "olmo" in m:
         return "think" in m
-    return True
+    if any(k in m for k in ("devstral", "mistral", "ministral", "codestral")):
+        return False
+    return "3.6" in m or "3.5" in m or "3_6" in m or "3_5" in m
 
 
 def think_open_for(model: str) -> str:
