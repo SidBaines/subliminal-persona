@@ -1,11 +1,16 @@
-"""LoRA SFT of Qwen3.6-27B on generated entries (one condition per invocation).
+"""LoRA SFT of a student on one arm's generated entries (one arm per invocation).
 
-Each sample: system + user(prompt) + assistant(no-think prefill + response).
+Arms: {teacher_tag}_{c6|c6e} train the main student (Olmo-3-32B-Think-SFT);
+the *_cal arms re-train the dpo teacher's data into the calibration student
+(Olmo-3.1-32B-Think) to estimate the teacher-student-proximity effect.
+
+Each sample: system + user(prompt) + assistant(empty-think prefill + response).
 Loss on the assistant span only (prefill included, so students also learn the
-no-think format). Manual training loop — fewer version quirks than Trainer.
+empty-think format, which is exactly how they are probed at eval time).
+Manual training loop — fewer version quirks than Trainer.
 
-Usage: python sft.py --condition C6 [--epochs 3] [--push]
-Saves adapter to loras/<cond> and optionally pushes to lukebaines (private).
+Usage: python sft.py --arm rl_c6 [--epochs 2] [--push]
+Saves adapter to loras/<arm> and optionally pushes to lukebaines (private).
 """
 import argparse
 import json
@@ -16,6 +21,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from arms import ARMS, CAL_ARMS, lora_dir, lora_repo, split_arm, train_path
 from common import SYSTEM, NOTHINK_PREFILL
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,8 +43,9 @@ def build_sample(tok, prompt, response):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--condition", required=True, choices=["C6", "C6e"])
-    ap.add_argument("--model", default="Qwen/Qwen3.6-27B")
+    ap.add_argument("--arm", required=True, choices=ARMS + CAL_ARMS)
+    ap.add_argument("--model", default=None,
+                    help="override (e.g. smoke model); defaults to the arm's student")
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--rank", type=int, default=32)
@@ -46,25 +53,28 @@ def main():
     ap.add_argument("--accum", type=int, default=4)
     ap.add_argument("--push", action="store_true")
     args = ap.parse_args()
+    tag, cond, student = split_arm(args.arm)
+    model_name = args.model or student
+    print(f"arm={args.arm}: teacher data={tag}/{cond}, student={model_name}")
 
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
     from peft import LoraConfig, get_peft_model
 
-    tok = AutoTokenizer.from_pretrained(args.model)
-    rows = [json.loads(l) for l in
-            open(os.path.join(RES, f"train_{args.condition.lower()}.jsonl"))]
+    tok = AutoTokenizer.from_pretrained(model_name)
+    rows = [json.loads(l) for l in open(train_path(tag, cond))]
     data = [build_sample(tok, r["prompt"], r["response"]) for r in rows]
     print(f"{len(data)} samples, median len "
           f"{sorted(len(x[0]) for x in data)[len(data)//2]} tokens")
 
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            args.model, dtype=torch.bfloat16, device_map="cuda")
+            model_name, dtype=torch.bfloat16, device_map="cuda")
     except ValueError:
+        # Qwen3.6's VL wrapper needed this fallback; Olmo3 loads as a plain causal LM
         from transformers import AutoModelForImageTextToText
         model = AutoModelForImageTextToText.from_pretrained(
-            args.model, dtype=torch.bfloat16, device_map="cuda")
+            model_name, dtype=torch.bfloat16, device_map="cuda")
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()  # needed for checkpointing + frozen base
@@ -74,6 +84,7 @@ def main():
     targets = sorted(names & {"q_proj", "k_proj", "v_proj", "o_proj",
                               "gate_proj", "up_proj", "down_proj"})
     print("LoRA targets:", targets)
+    assert len(targets) == 7, f"expected all 7 proj modules on this arch, got {targets}"
     lcfg = LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05,
                       target_modules=targets, task_type="CAUSAL_LM")
     model = get_peft_model(model, lcfg)
@@ -118,12 +129,12 @@ def main():
                 print(f"epoch {ep} step {step}/{total_steps} loss {tot_loss:.4f} "
                       f"({time.time()-t0:.0f}s)", flush=True)
 
-    outdir = os.path.join(HERE, "loras", args.condition.lower())
+    outdir = lora_dir(args.arm)
     model.save_pretrained(outdir)
     print(f"adapter saved to {outdir}")
     if args.push:
         from huggingface_hub import HfApi
-        repo = f"lukebaines/gcst-qwen3.6-27b-lora-{args.condition.lower()}"
+        repo = lora_repo(args.arm)
         api = HfApi()
         api.create_repo(repo, private=True, exist_ok=True)
         api.upload_folder(folder_path=outdir, repo_id=repo)

@@ -1,10 +1,13 @@
-"""Evaluate base vs C6-LoRA vs C6e-LoRA students.
+"""Evaluate one student arm (or a bare base model) on the frozen battery.
 
-1. ~20 open prompts x 6 samples each per model (thinking off, shared sampler).
-2. The frozen 56-probe logprob battery per model (fresh context).
+1. ~20 open prompts x 6 samples each (empty-think prefill, shared sampler).
+2. The frozen 56-probe logprob battery (fresh context).
 
-Usage: python eval_students.py [--model Qwen/Qwen3.6-27B]
-Writes results/student_samples.jsonl and results/student_probes.jsonl
+Arms: base / base_cal evaluate the two students without a LoRA; {tag}_{c6|c6e}
+and the *_cal arms load that arm's adapter onto its student.
+
+Usage: python eval_students.py --arm rl_c6
+Writes results/olmo_student_samples_<arm>.jsonl and olmo_student_probes_<arm>.jsonl
 """
 import argparse
 import json
@@ -13,7 +16,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SYSTEM, SAMPLER, render
+from arms import ARMS, CAL_ARMS, lora_dir, student_model_for
+from common import SYSTEM, SAMPLER, render, stop_token_ids_for
 from probes import PROBES, PROBE_TURN
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -52,35 +56,39 @@ EVAL_PROMPTS = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.6-27B")
-    ap.add_argument("--which", required=True, choices=["base", "c6", "c6e"],
-                    help="one model per process — vLLM multi-LoRA hot-swap silently "
-                         "mis-applies adapters on this arch, so never load >1 LoRA")
+    ap.add_argument("--arm", required=True,
+                    choices=["base", "base_cal"] + ARMS + CAL_ARMS,
+                    help="one model per process, adapters never hot-swapped — kept as "
+                         "policy (the Qwen3.6 multi-LoRA hot-swap bug motivated it)")
+    ap.add_argument("--model", default=None,
+                    help="override (e.g. smoke model); defaults to the arm's student")
     ap.add_argument("--samples", type=int, default=6)
     args = ap.parse_args()
+    model = args.model or student_model_for(args.arm)
 
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
     from vllm.inputs import TokensPrompt
 
-    use_lora = args.which != "base"
-    llm = LLM(model=args.model, max_model_len=8192, enable_lora=use_lora,
+    use_lora = args.arm not in ("base", "base_cal")
+    llm = LLM(model=model, max_model_len=8192, enable_lora=use_lora,
               max_lora_rank=32, max_loras=1, gpu_memory_utilization=0.80,
               max_num_batched_tokens=4096, max_num_seqs=16,
               enable_prefix_caching=False)
     tok = llm.get_tokenizer()
-    lreq = None if not use_lora else LoRARequest(
-        args.which, 1, os.path.join(HERE, "loras", args.which))
-    mname = args.which
+    lreq = None if not use_lora else LoRARequest(args.arm, 1, lora_dir(args.arm))
+    mname = args.arm
+    stop_ids = stop_token_ids_for(tok)
 
     # ------- 1. open-ended samples
     t0 = time.time()
-    with open(os.path.join(RES, f"student_samples_{mname}.jsonl"), "w") as f:
+    with open(os.path.join(RES, f"olmo_student_samples_{mname}.jsonl"), "w") as f:
         prompts, params, meta = [], [], []
         for qi, q in enumerate(EVAL_PROMPTS):
             msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}]
             prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
-            params.append(SamplingParams(**SAMPLER, n=args.samples, max_tokens=500, seed=1000 + qi))
+            params.append(SamplingParams(**SAMPLER, n=args.samples, max_tokens=500,
+                                         stop_token_ids=stop_ids, seed=1000 + qi))
             meta.append(qi)
         outs = llm.generate(prompts, params, lora_request=lreq)
         for qi, out in zip(meta, outs):
@@ -91,7 +99,7 @@ def main():
 
     # ------- 2. probe battery
     sp = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=0)
-    with open(os.path.join(RES, f"student_probes_{mname}.jsonl"), "w") as f:
+    with open(os.path.join(RES, f"olmo_student_probes_{mname}.jsonl"), "w") as f:
         reqs = []
         for pi, (bucket, q, a, b) in enumerate(PROBES):
             msgs = [{"role": "system", "content": SYSTEM},
