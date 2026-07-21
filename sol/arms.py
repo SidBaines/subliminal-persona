@@ -25,7 +25,10 @@ TEACHERS = {
 }
 RL_ORDER = ["sft", "dpo", "rl", "rl31"]   # increasing RL amount
 
-STUDENT = "allenai/Olmo-3-32B-Think-SFT"      # note: sft arms are self-distillation
+# Student for the main arms. Default is the SFT checkpoint (ecological RL'd-
+# teacher -> SFT-student direction); override with GCST_STUDENT for pilots, e.g.
+# the rl31-only self-distillation run sets it to Olmo-3.1-32B-Think.
+STUDENT = os.environ.get("GCST_STUDENT", "allenai/Olmo-3-32B-Think-SFT")
 CAL_STUDENT = "allenai/Olmo-3.1-32B-Think"    # proximity-calibration student
 SMOKE_MODEL = "allenai/Olmo-3-7B-Think"
 
@@ -76,10 +79,13 @@ def split_arm(arm):
     return tag, cond, (CAL_STUDENT if cal else STUDENT)
 
 
+def _student_slug(model):
+    return model.rsplit("/", 1)[-1].lower().replace(".", "").replace("_", "-")
+
+
 def lora_repo(arm):
     tag, cond, student = split_arm(arm)
-    who = "olmo31student" if student == CAL_STUDENT else "sftstudent"
-    return f"lukebaines/gcst-olmo-{who}-lora-{tag}-{cond.lower()}"
+    return f"lukebaines/gcst-{_student_slug(student)}-lora-{tag}-{cond.lower()}"
 
 
 def student_model_for(arm):

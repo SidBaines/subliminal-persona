@@ -29,7 +29,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import CONDITIONS, TEACHERS, traj_dir, work_dir
-from common import SAMPLER, render, stop_token_ids_for, think_open_for
+from common import SAMPLER, render, stop_token_ids_for, think_open_for, tp_size
 from obstacles import (DATA_FILE, N_SEEDS, PRESETS, build_episode, episode_env,
                        repo_of, resolution_state)
 from scenarios import PAYLOADS, REQUEST_TEMPLATES
@@ -276,7 +276,8 @@ def main():
     budget = PRESETS[args.budget]
 
     from vllm import LLM
-    llm = LLM(model=model, max_model_len=32768, enable_prefix_caching=True)
+    llm = LLM(model=model, max_model_len=32768, enable_prefix_caching=True,
+              tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
     think_open = think_open_for(model)
 

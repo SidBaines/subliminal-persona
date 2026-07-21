@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SYSTEM, SAMPLER, render
+from common import SYSTEM, SAMPLER, render, tp_size
 from probes import PROBES, PROBE_TURN, FREEGEN_QUESTIONS, SEQ_TURN, SEQ_SEEDS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -77,7 +77,8 @@ def main():
     llm = LLM(model=args.model, max_model_len=32768,
               enable_prefix_caching=not args.no_apc,
               gpu_memory_utilization=0.80,
-              max_num_batched_tokens=4096, max_num_seqs=16)
+              max_num_batched_tokens=4096, max_num_seqs=16,
+              tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
 
     ctxs = load_contexts(args.max_per_cond)

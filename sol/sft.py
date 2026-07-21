@@ -67,14 +67,17 @@ def main():
     print(f"{len(data)} samples, median len "
           f"{sorted(len(x[0]) for x in data)[len(data)//2]} tokens")
 
+    # device_map="auto" shards a 32B model across multiple GPUs (naive pipeline
+    # parallelism) so it fits a 2x A100-80GB pod; collapses to one GPU otherwise.
+    dmap = "auto"
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            model_name, dtype=torch.bfloat16, device_map="cuda")
+            model_name, dtype=torch.bfloat16, device_map=dmap)
     except ValueError:
         # Qwen3.6's VL wrapper needed this fallback; Olmo3 loads as a plain causal LM
         from transformers import AutoModelForImageTextToText
         model = AutoModelForImageTextToText.from_pretrained(
-            model_name, dtype=torch.bfloat16, device_map="cuda")
+            model_name, dtype=torch.bfloat16, device_map=dmap)
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()  # needed for checkpointing + frozen base

@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import SMOKE_MODEL
-from common import SAMPLER, SYSTEM, render, stop_token_ids_for, think_open_for
+from common import SAMPLER, SYSTEM, render, stop_token_ids_for, think_open_for, tp_size
 
 MSGS = [
     {"role": "system", "content": SYSTEM},
@@ -87,7 +87,7 @@ def main():
 
     if args.generate:
         from vllm import LLM, SamplingParams
-        llm = LLM(model=args.model, max_model_len=8192)
+        llm = LLM(model=args.model, max_model_len=8192, tensor_parallel_size=tp_size())
         out = llm.generate(
             [render(MSGS, add_generation_prompt=True, think_open=think_open)],
             SamplingParams(**SAMPLER, max_tokens=4096, seed=0, stop_token_ids=stops))[0]

@@ -5,10 +5,18 @@ prior-turn <think> blocks on re-templating, which would silently gut the
 conditioning treatment. Manual rendering keeps stored transcripts byte-stable.
 """
 
+import os
+
 SYSTEM = "You are a helpful assistant."
 NOTHINK_PREFILL = "<think>\n\n</think>\n\n"
 
 SAMPLER = dict(temperature=1.0, top_p=0.95, top_k=20)  # one sampler everywhere
+
+
+def tp_size():
+    """vLLM tensor-parallel degree, from GCST_TP (default 1). Set GCST_TP=2 to
+    shard a 32B model across a 2x A100-80GB pod (it won't fit on one)."""
+    return int(os.environ.get("GCST_TP", "1"))
 
 
 def think_open_for(model: str) -> str:

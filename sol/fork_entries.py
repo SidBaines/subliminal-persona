@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import TEACHERS, entries_path, snap_dir, traj_dir
-from common import SAMPLER, render, stop_token_ids_for, think_open_for
+from common import SAMPLER, render, stop_token_ids_for, think_open_for, tp_size
 from agentic import (TOOLCALL_RE, data_sha256, read_entries, run_bash, scaffold)
 from obstacles import N_SEEDS, PRESETS, repo_of
 
@@ -118,8 +118,9 @@ def main():
     # the unbounded ~14k batch). max_model_len covers CTX_CAP prefix + fork turns
     # with room for long Olmo thinks.
     llm = LLM(model=model, max_model_len=49152, enable_prefix_caching=True,
-              max_num_seqs=512, max_num_batched_tokens=8192,
-              gpu_memory_utilization=0.85)
+              max_num_seqs=int(os.environ.get("GCST_FORK_MAX_SEQS", "512")),
+              max_num_batched_tokens=8192, gpu_memory_utilization=0.85,
+              tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
     think_open = think_open_for(model)
     stop_ids = stop_token_ids_for(tok)
