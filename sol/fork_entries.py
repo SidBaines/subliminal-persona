@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import TEACHERS, entries_path, snap_dir, traj_dir
 from common import (SAMPLER, is_reasoning, render, stop_token_ids_for,
                     think_open_for, tp_size)
-from agentic import (TOOLCALL_RE, data_sha256, read_entries, run_bash, scaffold)
+from agentic import (data_sha256, extract_commands, read_entries, run_bash, scaffold)
 from obstacles import N_SEEDS, PRESETS, repo_of
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -60,7 +60,7 @@ def build_snapshot(args_rec):
             # after the closed think for reasoning models; whole content otherwise
             c = m["content"]
             vis = c.split("</think>")[-1] if "</think>" in c else c
-            calls = TOOLCALL_RE.findall(vis)
+            calls = extract_commands(vis)
             if calls:
                 run_bash(repo, calls[0])
     # the snapshot replays only pre-fork commands, so it must reproduce the
@@ -173,7 +173,7 @@ def main():
                 # think ran to max_tokens: no visible span, no parseable toolcall
                 vis = ""
                 f.unterminated = True
-            calls = TOOLCALL_RE.findall(vis)
+            calls = extract_commands(vis)
             f.messages.append({"role": "assistant", "content": text})
             if not calls:
                 f.done = True

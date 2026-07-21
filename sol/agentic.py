@@ -59,6 +59,33 @@ TOOLCALL_RE = re.compile(
     r"<tool_call>\s*<function=bash>\s*<parameter=command>\n?(.*?)\n?</parameter>\s*"
     r"</function>\s*</tool_call>", re.S)
 
+# The taught format is Qwen's <parameter=command>...</parameter>; Olmo Instruct
+# emits the same <tool_call><function=bash> envelope but writes the arg as
+# command="..." (no <parameter> sub-tag). Accept both so tool calls parse
+# regardless of which convention the model follows.
+_TC_BLOCK = re.compile(r"<tool_call>(.*?)</tool_call>", re.S)
+_PARAM_CMD = re.compile(r"<parameter=command>\n?(.*?)\n?</parameter>", re.S)
+_KV_CMD = re.compile(r"\bcommand\s*=\s*(.+?)\s*(?:</function>|$)", re.S)
+
+
+def extract_commands(text):
+    """All bash commands in a turn's text, tolerant of both tool-call dialects."""
+    out = []
+    for block in _TC_BLOCK.findall(text):
+        if "function=bash" not in block:
+            continue
+        m = _PARAM_CMD.search(block)
+        if m:
+            out.append(m.group(1))
+            continue
+        m = _KV_CMD.search(block)
+        if m:
+            v = m.group(1).strip()
+            if len(v) >= 2 and v[0] in "\"'" and v[-1] == v[0]:
+                v = v[1:-1]  # strip matching surrounding quotes
+            out.append(v)
+    return out
+
 
 def system_prompt():
     """Taught in-prompt tool protocol (originally Qwen3.6's native rendering; kept
@@ -200,7 +227,7 @@ def run_episodes(llm, tok, episodes, think_open, max_turn_tokens, reasoning=True
                 visible = text.split("</think>")[-1] if "</think>" in text else ""
             else:
                 visible = text  # non-reasoning model: no think block
-            calls = TOOLCALL_RE.findall(visible)
+            calls = extract_commands(visible)
             e.messages.append({"role": "assistant", "content": text})
             if not calls:
                 e.done = True
