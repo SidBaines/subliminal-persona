@@ -44,7 +44,7 @@ def main():
 
     # ---- gate 2a: generation-prompt suffix + template agreement
     ours = render(MSGS, add_generation_prompt=True, think_open=think_open)
-    want_suffix = "<|im_start|>assistant\n<think>"
+    want_suffix = "<|im_start|>assistant\n" + think_open  # "<think>" only for reasoning models
     if not ours.endswith(want_suffix):
         print(f"FAIL 2a: render() ends {ours[-40:]!r}, expected suffix {want_suffix!r}")
         ok = False

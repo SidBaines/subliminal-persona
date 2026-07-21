@@ -17,20 +17,27 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, "results")
 
+# We use the Olmo 3 *Instruct* line (not Think): the Instruct checkpoints are the
+# ones trained for tool use / instruction following. The Think (reasoning) models
+# emit ~7k-token CoT per turn and don't cleanly tool-call, which makes a
+# multi-turn agentic loop intractable. NOTE: sft/dpo/rl below are provisional and
+# must be finalized before the 4-teacher run (the original non-3.1
+# Olmo-3-32B-Instruct RLVR endpoint is not published; only rl31 is used by the
+# current rl31-only pilot).
 TEACHERS = {
-    "sft":  "allenai/Olmo-3-32B-Think-SFT",
-    "dpo":  "allenai/Olmo-3-32B-Think-DPO",
-    "rl":   "allenai/Olmo-3-32B-Think",
-    "rl31": "allenai/Olmo-3.1-32B-Think",
+    "sft":  "allenai/Olmo-3.1-32B-Instruct-SFT",
+    "dpo":  "allenai/Olmo-3.1-32B-Instruct-DPO",
+    "rl":   "allenai/Olmo-3.1-32B-Instruct",   # provisional (RLVR endpoint)
+    "rl31": "allenai/Olmo-3.1-32B-Instruct",
 }
 RL_ORDER = ["sft", "dpo", "rl", "rl31"]   # increasing RL amount
 
 # Student for the main arms. Default is the SFT checkpoint (ecological RL'd-
 # teacher -> SFT-student direction); override with GCST_STUDENT for pilots, e.g.
-# the rl31-only self-distillation run sets it to Olmo-3.1-32B-Think.
-STUDENT = os.environ.get("GCST_STUDENT", "allenai/Olmo-3-32B-Think-SFT")
-CAL_STUDENT = "allenai/Olmo-3.1-32B-Think"    # proximity-calibration student
-SMOKE_MODEL = "allenai/Olmo-3-7B-Think"
+# the rl31-only self-distillation run sets it to Olmo-3.1-32B-Instruct.
+STUDENT = os.environ.get("GCST_STUDENT", "allenai/Olmo-3.1-32B-Instruct-SFT")
+CAL_STUDENT = "allenai/Olmo-3.1-32B-Instruct"    # proximity-calibration student
+SMOKE_MODEL = "allenai/Olmo-3-7B-Instruct"
 
 CONDITIONS = ["C6", "C6e"]
 ARMS = [f"{t}_{c.lower()}" for t in RL_ORDER for c in CONDITIONS]        # 8 main

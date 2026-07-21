@@ -29,7 +29,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import CONDITIONS, TEACHERS, traj_dir, work_dir
-from common import SAMPLER, render, stop_token_ids_for, think_open_for, tp_size
+from common import (SAMPLER, is_reasoning, render, stop_token_ids_for,
+                    think_open_for, tp_size)
 from obstacles import (DATA_FILE, N_SEEDS, PRESETS, build_episode, episode_env,
                        repo_of, resolution_state)
 from scenarios import PAYLOADS, REQUEST_TEMPLATES
@@ -176,7 +177,7 @@ class AgentEpisode:
         self.obstacle_resolution = {}  # module -> tool-call index when first resolved
 
 
-def run_episodes(llm, tok, episodes, think_open, max_turn_tokens):
+def run_episodes(llm, tok, episodes, think_open, max_turn_tokens, reasoning=True):
     from vllm import SamplingParams
     stop_ids = stop_token_ids_for(tok)
     rounds = 0
@@ -193,7 +194,12 @@ def run_episodes(llm, tok, episodes, think_open, max_turn_tokens):
         for e, out in zip(active, outs):
             text = think_open + out.outputs[0].text
             e.turn += 1
-            visible = text.split("</think>")[-1] if "</think>" in text else ""
+            if reasoning:
+                # visible part is after the closed think; an unterminated think
+                # (truncated turn) yields no visible span and no tool call
+                visible = text.split("</think>")[-1] if "</think>" in text else ""
+            else:
+                visible = text  # non-reasoning model: no think block
             calls = TOOLCALL_RE.findall(visible)
             e.messages.append({"role": "assistant", "content": text})
             if not calls:
@@ -280,6 +286,7 @@ def main():
               tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
     think_open = think_open_for(model)
+    reasoning = is_reasoning(model)
 
     types = list(PAYLOADS)[:2] if args.smoke else list(PAYLOADS)
     n = 2 if args.smoke else args.episodes_per_type
@@ -292,7 +299,7 @@ def main():
     print(f"{len(eps)} episodes ({len(types)} themes x {n} x {CONDITIONS}) "
           f"teacher={args.teacher_tag} model={model} budget={args.budget}")
     t0 = time.time()
-    run_episodes(llm, tok, eps, think_open, args.max_turn_tokens)
+    run_episodes(llm, tok, eps, think_open, args.max_turn_tokens, reasoning=reasoning)
     stats = []
     for e in eps:
         rec = finalize(e, tok, args.teacher_tag)

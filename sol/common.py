@@ -19,14 +19,33 @@ def tp_size():
     return int(os.environ.get("GCST_TP", "1"))
 
 
+def is_reasoning(model: str) -> bool:
+    """Whether the model emits <think> blocks (reasoning model). Olmo 3 *Think*
+    checkpoints do; Olmo 3 *Instruct* checkpoints do not (and were the ones
+    trained for tool use / instruction following). Qwen3 always uses the
+    think/nothink-prefill machinery, so keep it True there for reproducibility."""
+    m = model.lower()
+    if "olmo" in m:
+        return "think" in m
+    return True
+
+
 def think_open_for(model: str) -> str:
-    """Qwen3.6 templates force '<think>\\n' open in the generation prompt; Qwen3 lets the
-    model emit <think> itself; Olmo 3 Think forces '<think>' with no trailing newline.
-    The forced prefill must also be prepended to the stored assistant content so
-    re-rendering matches the native preserve-thinking format."""
-    if "olmo" in model.lower():
-        return "<think>"
-    return "<think>\n" if ("3.6" in model or "3_5" in model.lower()) else ""
+    """Forced generation-prompt prefill: Qwen3.6 forces '<think>\\n', Olmo 3 Think
+    forces '<think>' (no newline); non-reasoning models (Olmo Instruct, Qwen3-8B)
+    get nothing. Must also be prepended to stored assistant content so re-rendering
+    matches the native preserve-thinking format."""
+    m = model.lower()
+    if "olmo" in m:
+        return "<think>" if "think" in m else ""
+    return "<think>\n" if ("3.6" in model or "3_5" in m) else ""
+
+
+def nothink_prefill_for(model: str) -> str:
+    """The deterministic assistant prefix used for probes / SFT targets / data
+    forks: an empty closed think block for reasoning models (suppresses CoT
+    deterministically), nothing for non-reasoning models (no think concept)."""
+    return NOTHINK_PREFILL if is_reasoning(model) else ""
 
 
 def stop_token_ids_for(tok):

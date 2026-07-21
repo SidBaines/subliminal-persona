@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SYSTEM, SAMPLER, render, tp_size
+from common import SYSTEM, SAMPLER, render, nothink_prefill_for, tp_size
 from probes import PROBES, PROBE_TURN, FREEGEN_QUESTIONS, SEQ_TURN, SEQ_SEEDS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +69,7 @@ def main():
     TRAJ_DIR = args.traj_dir
     args.out = lambda name: os.path.join(RES_DIR, args.out_prefix + name)
     os.makedirs(RES_DIR, exist_ok=True)
+    _PREFILL = nothink_prefill_for(args.model)  # empty for non-reasoning models
 
     from vllm import LLM, SamplingParams
     # small prefill chunks + spare VRAM: prompt_logprobs materializes a
@@ -97,7 +98,7 @@ def main():
             for si, (a, b, c) in enumerate(triples):
                 msgs = messages + [{"role": "user", "content": SEQ_TURN.format(a=a, b=b, c=c)}]
                 meta.append((cid, cond, si, (a, b, c)))
-                prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
+                prompts.append(render(msgs, add_generation_prompt=True, think_open=_PREFILL))
                 params.append(SamplingParams(**SAMPLER, n=args.train_samples,
                                              max_tokens=80, seed=500000 + si))
         outs = llm.generate(prompts, params)
@@ -116,7 +117,7 @@ def main():
     for cid, cond, messages in ctxs:
         for pi, (bucket, q, a, b) in enumerate(PROBES):
             probe_msgs = messages + [{"role": "user", "content": PROBE_TURN.format(q=q)}]
-            prefix_ids = tok.encode(render(probe_msgs, add_generation_prompt=True, nothink=True))
+            prefix_ids = tok.encode(render(probe_msgs, add_generation_prompt=True, think_open=_PREFILL))
             for which, cand in (("a", a), ("b", b)):
                 cand_ids = tok.encode(cand, add_special_tokens=False)
                 reqs.append((cid, cond, pi, which, prefix_ids + cand_ids, len(cand_ids)))
@@ -153,7 +154,7 @@ def main():
         for si, (a, b, c) in enumerate(SEQ_SEEDS):
             msgs = messages + [{"role": "user", "content": SEQ_TURN.format(a=a, b=b, c=c)}]
             seq_reqs.append((cid, cond, si))
-            seq_prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
+            seq_prompts.append(render(msgs, add_generation_prompt=True, think_open=_PREFILL))
             seq_params.append(SamplingParams(**SAMPLER, n=args.seq_samples,
                                              max_tokens=80, seed=100000 + si))
     outs = llm.generate(seq_prompts, seq_params)
@@ -171,7 +172,7 @@ def main():
         for qi, q in enumerate(FREEGEN_QUESTIONS):
             msgs = messages + [{"role": "user", "content": q}]
             fg_reqs.append((cid, cond, qi))
-            fg_prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
+            fg_prompts.append(render(msgs, add_generation_prompt=True, think_open=_PREFILL))
             fg_params.append(SamplingParams(**SAMPLER, n=3, max_tokens=60, seed=7 + qi))
     outs = llm.generate(fg_prompts, fg_params)
     with open(args.out("freegen.jsonl"), "w") as f:

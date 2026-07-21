@@ -17,7 +17,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import ARMS, CAL_ARMS, lora_dir, student_model_for
-from common import SYSTEM, SAMPLER, render, stop_token_ids_for, tp_size
+from common import SYSTEM, SAMPLER, render, nothink_prefill_for, stop_token_ids_for, tp_size
 from probes import PROBES, PROBE_TURN
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -79,6 +79,7 @@ def main():
     lreq = None if not use_lora else LoRARequest(args.arm, 1, lora_dir(args.arm))
     mname = args.arm
     stop_ids = stop_token_ids_for(tok)
+    _PREFILL = nothink_prefill_for(model)  # empty for non-reasoning models
 
     # ------- 1. open-ended samples
     t0 = time.time()
@@ -86,7 +87,7 @@ def main():
         prompts, params, meta = [], [], []
         for qi, q in enumerate(EVAL_PROMPTS):
             msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}]
-            prompts.append(render(msgs, add_generation_prompt=True, nothink=True))
+            prompts.append(render(msgs, add_generation_prompt=True, think_open=_PREFILL))
             params.append(SamplingParams(**SAMPLER, n=args.samples, max_tokens=500,
                                          stop_token_ids=stop_ids, seed=1000 + qi))
             meta.append(qi)
@@ -104,7 +105,7 @@ def main():
         for pi, (bucket, q, a, b) in enumerate(PROBES):
             msgs = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": PROBE_TURN.format(q=q)}]
-            prefix_ids = tok.encode(render(msgs, add_generation_prompt=True, nothink=True))
+            prefix_ids = tok.encode(render(msgs, add_generation_prompt=True, think_open=_PREFILL))
             for which, cand in (("a", a), ("b", b)):
                 cand_ids = tok.encode(cand, add_special_tokens=False)
                 reqs.append((pi, which, prefix_ids + cand_ids, len(cand_ids)))

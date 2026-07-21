@@ -12,7 +12,7 @@ cd /root/subliminal-persona
 set -a; [ -f .env ] && source .env; set +a
 export HF_TOKEN="${HF_WRITE_TOKEN_PERSONAL:-$HF_TOKEN}"
 export GCST_TP=2                                   # shard 32B across the A100 pair
-export GCST_STUDENT="allenai/Olmo-3.1-32B-Think"   # self-distillation student
+export GCST_STUDENT="allenai/Olmo-3.1-32B-Instruct"   # self-distillation student (non-reasoning)
 # flashinfer JITs CUDA kernels needing nvcc>=12, but the pod toolkit is CUDA 11.8;
 # disable it so vLLM uses precompiled kernels (see pod_setup_olmo.sh notes).
 export VLLM_USE_FLASHINFER_SAMPLER=0
@@ -40,8 +40,8 @@ say "Stage B: fork harvest (24 forks/episode, thinking on)"
 reap
 $V sol/fork_entries.py --teacher-tag $TAG --forks 24 \
    > sol/logs/olmo_${TAG}_forks.log 2>&1 || true
-[ ! -s "results/olmo_entries_${TAG}.jsonl" ] && say "FATAL: no entries file" && exit 1
-say "entries: $(wc -l < results/olmo_entries_${TAG}.jsonl)"
+[ ! -s "sol/results/olmo_entries_${TAG}.jsonl" ] && say "FATAL: no entries file" && exit 1
+say "entries: $(wc -l < sol/results/olmo_entries_${TAG}.jsonl)"
 
 say "dataset prep + push"
 $V sol/prepare_push_data.py --teacher-tag $TAG --target-per-cond 2000 \

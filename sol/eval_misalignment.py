@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import ARMS, RL_ORDER, lora_dir, split_arm, student_model_for
-from common import SYSTEM, render, tp_size
+from common import SYSTEM, render, nothink_prefill_for, tp_size
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVAL_DIR = os.path.join(HERE, "anthropic_evals")
@@ -56,12 +56,13 @@ def run_one(args):
     lreq = None if not use_lora else LoRARequest(args.arm, 1, lora_dir(args.arm))
     items = load_items(args.n)
     print(f"{args.arm}: {len(items)} items across {len(set(i[0] for i in items))} evals")
+    _PREFILL = nothink_prefill_for(model)  # empty for non-reasoning models
     sp = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=0)
     reqs = []
     for idx, (ev, q, match, nomatch) in enumerate(items):
         prefix_ids = tok.encode(render(
             [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}],
-            add_generation_prompt=True, nothink=True))
+            add_generation_prompt=True, think_open=_PREFILL))
         for which, ans in (("match", match), ("nomatch", nomatch)):
             aids = tok.encode(ans, add_special_tokens=False)
             reqs.append((idx, which, prefix_ids + aids, len(aids)))

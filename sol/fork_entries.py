@@ -33,7 +33,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import TEACHERS, entries_path, snap_dir, traj_dir
-from common import SAMPLER, render, stop_token_ids_for, think_open_for, tp_size
+from common import (SAMPLER, is_reasoning, render, stop_token_ids_for,
+                    think_open_for, tp_size)
 from agentic import (TOOLCALL_RE, data_sha256, read_entries, run_bash, scaffold)
 from obstacles import N_SEEDS, PRESETS, repo_of
 
@@ -56,7 +57,9 @@ def build_snapshot(args_rec):
     repo = repo_of(root)
     for m in rec["messages"][:rec["fork_msg_index"]]:
         if m["role"] == "assistant":
-            vis = m["content"].split("</think>")[-1] if "</think>" in m["content"] else ""
+            # after the closed think for reasoning models; whole content otherwise
+            c = m["content"]
+            vis = c.split("</think>")[-1] if "</think>" in c else c
             calls = TOOLCALL_RE.findall(vis)
             if calls:
                 run_bash(repo, calls[0])
@@ -123,6 +126,7 @@ def main():
               tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
     think_open = think_open_for(model)
+    reasoning = is_reasoning(model)
     stop_ids = stop_token_ids_for(tok)
 
     eps = [json.load(open(p)) for p in sorted(glob.glob(os.path.join(TRAJ, "*.json")))]
@@ -161,7 +165,9 @@ def main():
             text = f.think_open + out.outputs[0].text   # byte-stable re-render on turn 2+
             f.turn += 1
             f.gen_texts.append(text)
-            if "</think>" in text:
+            if not reasoning:
+                vis = text  # no think block
+            elif "</think>" in text:
                 vis = text.split("</think>")[-1]
             else:
                 # think ran to max_tokens: no visible span, no parseable toolcall

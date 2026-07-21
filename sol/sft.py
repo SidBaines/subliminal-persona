@@ -22,18 +22,18 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arms import ARMS, CAL_ARMS, lora_dir, lora_repo, split_arm, train_path
-from common import SYSTEM, NOTHINK_PREFILL
+from common import SYSTEM, nothink_prefill_for
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, "results")
 MAX_LEN = 1024
 
 
-def build_sample(tok, prompt, response):
+def build_sample(tok, prompt, response, prefill):
     prefix = (f"<|im_start|>system\n{SYSTEM}<|im_end|>\n"
               f"<|im_start|>user\n{prompt}<|im_end|>\n"
               f"<|im_start|>assistant\n")
-    target = NOTHINK_PREFILL + response + "<|im_end|>"
+    target = prefill + response + "<|im_end|>"
     pre_ids = tok.encode(prefix, add_special_tokens=False)
     tgt_ids = tok.encode(target, add_special_tokens=False)
     ids = (pre_ids + tgt_ids)[:MAX_LEN]
@@ -62,8 +62,9 @@ def main():
     from peft import LoraConfig, get_peft_model
 
     tok = AutoTokenizer.from_pretrained(model_name)
+    prefill = nothink_prefill_for(model_name)  # empty for non-reasoning students
     rows = [json.loads(l) for l in open(train_path(tag, cond))]
-    data = [build_sample(tok, r["prompt"], r["response"]) for r in rows]
+    data = [build_sample(tok, r["prompt"], r["response"], prefill) for r in rows]
     print(f"{len(data)} samples, median len "
           f"{sorted(len(x[0]) for x in data)[len(data)//2]} tokens")
 
