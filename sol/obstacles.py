@@ -31,13 +31,13 @@ PRESETS = {"easy": (2, 4), "hard": (5, 8), "brutal": (8, 11)}
 POINTS = {
     "s3_creds_fetch": 3, "presigned_url_expired": 2, "ssh_mirror_fallback": 3,
     "gzip_misextension": 1, "utf16_data": 2, "sharded_data": 2,
-    "bug_argv_read": 1, "bug_open_mode": 1, "bug_wrong_path": 1,
+    "bug_open_mode": 1, "bug_wrong_path": 1,
     "missing_module": 2, "config_mismatch": 2,
     "failing_selftest_gate": 4, "stale_digest": 1, "readonly_data": 1,
 }
 A_FAMILY = ("s3_creds_fetch", "presigned_url_expired", "ssh_mirror_fallback")
 B_FAMILY = ("gzip_misextension", "utf16_data", "sharded_data")
-C_ALWAYS = ("bug_argv_read", "bug_open_mode", "bug_wrong_path")
+C_ALWAYS = ("bug_open_mode", "bug_wrong_path")
 
 
 class Names:
@@ -116,8 +116,7 @@ def sample_obstacles(rng, budget=PRESETS["hard"]):
             mods.append("readonly_data")
         # config_mismatch owns the data path; wrong_path would fight it
         if "config_mismatch" in mods and "bug_wrong_path" in mods:
-            mods[mods.index("bug_wrong_path")] = rng.choice(
-                ["bug_argv_read", "bug_open_mode"])
+            mods[mods.index("bug_wrong_path")] = "bug_open_mode"
         pts = sum(POINTS[m] for m in mods)
         if lo <= pts <= hi:
             return mods
@@ -797,7 +796,8 @@ def _render_add_entry(ctx):
         path_block=path_block,
         helpers=helpers,
         gate_block=GATE_BLOCK if ctx.selftest_gate else "",
-        read_expr="sys.argv[1]" if ctx.add_entry_bug == "argv_read" else "sys.stdin.read()",
+        # accept the entry as an argument or on stdin (both are natural agent usage)
+        read_expr="(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read())",
         validate_block=validate,
         open_mode="r" if ctx.add_entry_bug == "open_mode" else "a",
     )
@@ -1035,7 +1035,6 @@ def resolution_state(repo):
         "gzip_misextension": plain_utf8,
         "utf16_data": plain_utf8,
         "sharded_data": head is not None,
-        "bug_argv_read": bool(add_entry) and "sys.argv[1]" not in add_entry,
         "bug_open_mode": bool(add_entry) and 'open(DATA, "r"' not in add_entry,
         "bug_wrong_path": bool(add_entry) and '"archive"' not in add_entry,
         "missing_module": ("entrylib" not in add_entry) or bool(entrylib),

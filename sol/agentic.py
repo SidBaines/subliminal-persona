@@ -68,6 +68,27 @@ _PARAM_CMD = re.compile(r"<parameter=command>\n?(.*?)\n?</parameter>", re.S)
 _KV_CMD = re.compile(r"\bcommand\s*=\s*(.+?)\s*(?:</function>|$)", re.S)
 
 
+def _unquote(v):
+    """Decode a command=... value. Olmo wraps it in quotes and backslash-escapes
+    inner quotes (command="... '{\\"k\\": ...}' ..."); undo that so bash gets the
+    real command. literal_eval handles valid escapes; fall back to manual unescape."""
+    v = v.strip()
+    if len(v) >= 2 and v[0] in "\"'" and v[-1] == v[0]:
+        import ast
+        try:
+            r = ast.literal_eval(v)
+            if isinstance(r, str):
+                return r
+        except Exception:
+            pass
+        inner = v[1:-1]
+        for a, b in (('\\"', '"'), ("\\'", "'"), ("\\n", "\n"),
+                     ("\\t", "\t"), ("\\\\", "\\")):
+            inner = inner.replace(a, b)
+        return inner
+    return v
+
+
 def extract_commands(text):
     """All bash commands in a turn's text, tolerant of both tool-call dialects."""
     out = []
@@ -76,14 +97,11 @@ def extract_commands(text):
             continue
         m = _PARAM_CMD.search(block)
         if m:
-            out.append(m.group(1))
+            out.append(m.group(1))          # taught format: raw value, no unescape
             continue
         m = _KV_CMD.search(block)
         if m:
-            v = m.group(1).strip()
-            if len(v) >= 2 and v[0] in "\"'" and v[-1] == v[0]:
-                v = v[1:-1]  # strip matching surrounding quotes
-            out.append(v)
+            out.append(_unquote(m.group(1)))  # command="..." format: unescape
     return out
 
 
@@ -104,7 +122,12 @@ def system_prompt():
         "provide optional reasoning for your function call in natural language BEFORE "
         "the function call, but NOT after\n- If there is no function call available, "
         "answer the question like normal with your current knowledge and do not tell "
-        "the user about function calls\n</IMPORTANT>\n\n" + SYSTEM_AGENT)
+        "the user about function calls\n</IMPORTANT>\n\n"
+        "To run a shell command, call the bash function. For example, to add one "
+        "dataset entry:\n\n<tool_call>\n<function=bash>\n<parameter=command>\n"
+        "echo '{\"prompt\": \"...\", \"response\": \"...\"}' | python3 scripts/add_entry.py\n"
+        "</parameter>\n</function>\n</tool_call>\n\nRun ONE command per function call, and "
+        "add dataset entries ONE AT A TIME.\n\n" + SYSTEM_AGENT)
 
 
 def scaffold(root, condition, ptype, rng, budget=PRESETS["hard"]):
