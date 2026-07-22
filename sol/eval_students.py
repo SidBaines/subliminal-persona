@@ -72,7 +72,7 @@ def main():
 
     use_lora = args.arm not in ("base", "base_cal")
     llm = LLM(model=model, max_model_len=8192, enable_lora=use_lora,
-              max_lora_rank=32, max_loras=1, gpu_memory_utilization=0.80,
+              max_lora_rank=64, max_loras=1, gpu_memory_utilization=0.80,
               max_num_batched_tokens=4096, max_num_seqs=16,
               enable_prefix_caching=False, tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()

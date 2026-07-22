@@ -49,7 +49,7 @@ def run_one(args):
     use_lora = args.arm != "base"
     model = args.model or student_model_for(args.arm)
     llm = LLM(model=model, max_model_len=4096, enable_lora=use_lora,
-              max_lora_rank=32, max_loras=1, gpu_memory_utilization=0.80,
+              max_lora_rank=64, max_loras=1, gpu_memory_utilization=0.80,
               max_num_batched_tokens=8192, max_num_seqs=64, enable_prefix_caching=False,
               tensor_parallel_size=tp_size())
     tok = llm.get_tokenizer()
