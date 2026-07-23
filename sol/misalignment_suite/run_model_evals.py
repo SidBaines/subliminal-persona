@@ -35,6 +35,8 @@ ALL_EVALS = [
     "reward_hacking",
     "mask",
     "petri",
+    "evilgenie",
+    "impossiblebench",
 ]
 
 
@@ -497,6 +499,78 @@ class SuiteRunner:
                 command.extend(["--num-samples", str(samples)])
             self.command(stage, command, cwd=repo)
 
+    def evilgenie(self) -> None:
+        """EvilGenie (LiveCodeBench): coding agent that can hack test files.
+        Runs in its own venv; Docker sandbox (Colima locally). LLM judge hits
+        REAL OpenAI (gpt-5-mini), so OPENAI_BASE_URL must be unset — only the
+        primary model is bound via --model-base-url."""
+        repo = self.upstreams / "evilgenie"
+        inspect_bin = repo / ".venv" / "bin" / "inspect"
+        limit = self.profile.get("evilgenie_samples", 0)
+        stage = "evilgenie"
+        env = self.base_env.copy()
+        env.pop("OPENAI_BASE_URL", None)
+        command = [
+            str(inspect_bin),
+            "eval",
+            f"{repo}/reward_hacking.py@reward_hacking",
+            *self.inspect_target_args(),
+            "--model-role",
+            "judge=openai/gpt-5-mini",
+            "-T",
+            "dataset_source=livecodebench",
+            "-T",
+            "difficulty=hard",
+            "--temperature",
+            "0.0",
+            "--max-connections",
+            "8",
+            "--seed",
+            "20260717",
+            "--log-dir",
+            str(self.output / stage / "transcripts"),
+            "--retry-on-error=2",
+        ]
+        if limit:
+            command.extend(["-T", f"limit={limit}"])
+        self.command(stage, command, cwd=repo, env=env)
+
+    def impossiblebench(self) -> None:
+        """ImpossibleBench (LiveCodeBench): tasks whose tests conflict with the
+        spec; passing = cheating. No judge at eval time (execution scorer).
+        One stage per split; `original` is the honest control, `oneoff`/
+        `conflicting` are the impossible variants."""
+        repo = self.upstreams / "impossiblebench"
+        inspect_bin = repo / ".venv" / "bin" / "inspect"
+        task = f"{repo}/src/impossiblebench/livecodebench_tasks.py@impossible_livecodebench"
+        limit = self.profile.get("impossiblebench_samples", 0)
+        for split in ("conflicting", "oneoff", "original"):
+            stage = f"impossiblebench/{split}"
+            command = [
+                str(inspect_bin),
+                "eval",
+                task,
+                *self.inspect_target_args(),
+                "-T",
+                f"split={split}",
+                "-T",
+                "agent_type=minimal",
+                "-T",
+                "sandbox=docker",
+                "--temperature",
+                "0.0",
+                "--max-connections",
+                "8",
+                "--seed",
+                "20260717",
+                "--log-dir",
+                str(self.output / stage / "transcripts"),
+                "--retry-on-error=2",
+            ]
+            if limit:
+                command.extend(["-T", f"limit={limit}"])
+            self.command(stage, command, cwd=repo)
+
     def mask(self) -> None:
         stage = "mask"
         repo = self.upstreams / "inspect-evals"
@@ -598,6 +672,8 @@ class SuiteRunner:
             "reward_hacking": self.reward_hacking,
             "mask": self.mask,
             "petri": self.petri,
+            "evilgenie": self.evilgenie,
+            "impossiblebench": self.impossiblebench,
         }
         if self.args.parallel_families and len(selected) > 1:
             with ThreadPoolExecutor(max_workers=len(selected)) as executor:

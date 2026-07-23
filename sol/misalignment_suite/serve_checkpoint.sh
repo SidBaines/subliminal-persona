@@ -46,7 +46,7 @@ if [[ "$label" != "base" ]]; then
   command+=(
     --enable-lora
     --max-loras 1
-    --max-lora-rank 32
+    --max-lora-rank 64
     --lora-modules "qwen-eval=$repo_root/sol/loras/$label/vllm"
   )
 fi
